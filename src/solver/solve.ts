@@ -56,7 +56,11 @@ export interface SolveResult {
 
 const EPS = 1e-9;
 
-export function recipeLookup(db: GameData, extra: Recipe[] = []) {
+/**
+ * Recipe index for a plan. `prefer` lists machines whose recipes should be the
+ * default when an item has several (e.g. Enhanced Grinder over Grinder).
+ */
+export function recipeLookup(db: GameData, extra: Recipe[] = [], prefer: readonly string[] = []) {
   const byId = new Map(db.recipesById);
   const byOutput = new Map<string, Recipe[]>();
   for (const [k, v] of db.recipesByOutput) byOutput.set(k, [...v]);
@@ -64,12 +68,30 @@ export function recipeLookup(db: GameData, extra: Recipe[] = []) {
     byId.set(r.id, r);
     for (const o of Object.keys(r.outputs)) byOutput.set(o, [...(byOutput.get(o) ?? []), r]);
   }
-  return { byId, byOutput };
+  return { byId, byOutput, prefer };
 }
 
-/** Recipes an item can be made with, excluding "buy it" portal recipes. */
+const sameIO = (a: Recipe, b: Recipe) =>
+  JSON.stringify(Object.entries(a.inputs).sort()) === JSON.stringify(Object.entries(b.inputs).sort()) &&
+  JSON.stringify(Object.entries(a.outputs).sort()) === JSON.stringify(Object.entries(b.outputs).sort());
+
+/**
+ * Recipes an item can be made with (no "buy it" portal recipes), in DB order, except
+ * that a recipe on a preferred machine moves up in front of its identical-I/O twin
+ * (e.g. "Sand (Enhanced)" ahead of Grinder "Sand"). Only exact twins are promoted, so
+ * a preferred machine never changes which ingredients a chain uses.
+ */
 export function producibleRecipes(lookup: ReturnType<typeof recipeLookup>, item: string): Recipe[] {
-  return (lookup.byOutput.get(item) ?? []).filter(r => !EXTERNAL_MACHINES.has(r.machine));
+  const list = (lookup.byOutput.get(item) ?? []).filter(r => !EXTERNAL_MACHINES.has(r.machine));
+  if (!lookup.prefer.length) return list;
+  const out: Recipe[] = [];
+  for (const r of list) {
+    if (out.includes(r)) continue;
+    const twin = list.find(t => t !== r && !out.includes(t) && lookup.prefer.includes(t.machine) && !lookup.prefer.includes(r.machine) && sameIO(t, r));
+    if (twin) out.push(twin);
+    out.push(r);
+  }
+  return out;
 }
 
 export function defaultRecipe(lookup: ReturnType<typeof recipeLookup>, item: string): Recipe | undefined {
@@ -117,7 +139,7 @@ export function batchesPerMachine(db: GameData, recipe: Recipe, settings: Settin
 export function solvePlan(db: GameData, input: PlanInput): SolveResult {
   const { settings, choices } = input;
   const m = mults(settings);
-  const lookup = recipeLookup(db, input.extraRecipes);
+  const lookup = recipeLookup(db, input.extraRecipes, settings.preferMachines);
   const empty: SolveResult = { status: 'optimal', lines: [], raw: {}, surplus: {}, flows: [], fertPerMin: 0 };
 
   const demand = new Map<string, number>();

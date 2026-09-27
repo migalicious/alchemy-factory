@@ -70,3 +70,20 @@ describe('solvePlan', () => {
     expect(bad).toEqual([]);
   });
 });
+
+describe('preferred machines', () => {
+  it('Enhanced Grinder replaces its identical Grinder twin by default', () => {
+    const r = plan({ Sand: 10 });
+    expect(r.lines.find(l => l.items.includes('Sand'))!.recipe.machine).toBe('Enhanced Grinder');
+  });
+  it("doesn't switch to a different-ingredient recipe (Copper Powder stays on Athanor)", () => {
+    const r = plan({ 'Copper Powder': 1 });
+    expect(r.status).toBe('optimal');
+    expect(r.lines.find(l => l.items.includes('Copper Powder'))!.recipe.machine).toBe('Athanor');
+  });
+  it('can be turned off', () => {
+    const s = defaultSettings();
+    s.preferMachines = [];
+    expect(plan({ Sand: 10 }, {}, s).lines.find(l => l.items.includes('Sand'))!.recipe.machine).toBe('Grinder');
+  });
+});

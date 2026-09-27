@@ -11,6 +11,8 @@ export interface Settings {
   heating: HeatingDevice;
   /** Furnace used when a line (or the boiler bank) burns fuel directly. */
   furnace: 'Stone Furnace' | 'Blast Furnace';
+  /** Machines whose recipes become the default when an item has alternatives. */
+  preferMachines: string[];
 }
 
 export const defaultSettings = (): Settings => ({
@@ -19,6 +21,7 @@ export const defaultSettings = (): Settings => ({
   fertilizer: 'Basic Fertilizer',
   heating: 'Steam Heating Pad',
   furnace: 'Stone Furnace',
+  preferMachines: ['Enhanced Grinder'],
 });
 
 export interface Mults {

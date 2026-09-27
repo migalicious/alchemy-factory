@@ -106,6 +106,9 @@ export function sanitize(db: GameData, raw: unknown): PlanState | null {
       fertilizer: s.fertilizer && db.items[s.fertilizer]?.nutrientValue ? s.fertilizer : base.settings.fertilizer,
       heating: devices.includes(s.heating as string) ? (s.heating as Settings['heating']) : base.settings.heating,
       furnace: s.furnace === 'Blast Furnace' ? 'Blast Furnace' : 'Stone Furnace',
+      preferMachines: Array.isArray(s.preferMachines)
+        ? s.preferMachines.filter(m => typeof m === 'string' && db.machines[m])
+        : base.settings.preferMachines,
     },
     vegan: !!r.vegan,
     veganLogs: r.veganLogs !== false,
