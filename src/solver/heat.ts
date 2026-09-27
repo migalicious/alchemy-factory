@@ -31,6 +31,8 @@ export interface BoilerBank {
 export interface HeatResult {
   lines: Map<string, LineHeat>;
   boiler: BoilerBank | null;
+  /** Total steam demand (steam/min), whether or not boilers are planned. */
+  steamPerMin: number;
   totalHeatPerSec: number;
   totalFuelPerMin: number;
   devices: Record<string, number>; // device name -> count (incl. boiler furnaces)
@@ -74,7 +76,7 @@ export function computeHeat(db: GameData, lines: Line[], settings: Settings, ove
   }
 
   let boiler: BoilerBank | null = null;
-  if (steamPerMin > 1e-9) {
+  if (steamPerMin > 1e-9 && settings.steamSupply === 'boilers') {
     const br = db.recipesById.get(STEAM_BOILER_RECIPE)!;
     const steamPerBoilerMin = ((br.outputs.Steam ?? 0) / (br.baseTime || 1)) * 60 * m.speed; // 9000/min at speed 1
     const boilers = steamPerMin / steamPerBoilerMin;
@@ -90,5 +92,5 @@ export function computeHeat(db: GameData, lines: Line[], settings: Settings, ove
     boiler = { steamPerMin, heatPerSec, boilers, boilersCeil, furnace, furnaces, fuelPerMin };
   }
 
-  return { lines: out, boiler, totalHeatPerSec: totalHeat, totalFuelPerMin: totalFuel, devices };
+  return { lines: out, boiler, steamPerMin, totalHeatPerSec: totalHeat, totalFuelPerMin: totalFuel, devices };
 }

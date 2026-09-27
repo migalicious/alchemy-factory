@@ -87,6 +87,15 @@ export function renderSidebar(app: App, root: HTMLElement): void {
     { class: 'panel', open: true },
     h('summary', {}, 'Heating & fuel'),
     select('Default heating', plan.settings.heating, DEVICES.map(d => [d, d]), v => app.update(p => (p.settings.heating = v as HeatingDevice))),
+    select(
+      'Steam from',
+      plan.settings.steamSupply,
+      [
+        ['existing', 'My existing supply'],
+        ['boilers', 'Plan boilers'],
+      ],
+      v => app.update(p => (p.settings.steamSupply = v as 'existing' | 'boilers')),
+    ),
     select('Furnace (fuel lines & boilers)', plan.settings.furnace, [['Stone Furnace', 'Stone Furnace'], ['Blast Furnace', 'Blast Furnace']], v =>
       app.update(p => (p.settings.furnace = v as 'Stone Furnace' | 'Blast Furnace')),
     ),
@@ -163,6 +172,8 @@ function renderSummary(app: App): HTMLElement {
       {},
       h('dt', {}, 'Fuel'),
       h('dd', {}, `${fmt(heat.totalFuelPerMin)} ${fuel}/min`),
+      heat.steamPerMin > 0 ? h('dt', {}, 'Steam') : null,
+      heat.steamPerMin > 0 ? h('dd', {}, `${fmt(heat.steamPerMin)}/min${b ? '' : ' from your existing supply'}`) : null,
       h('dt', {}, 'Heat'),
       h('dd', {}, `${fmt(heat.totalHeatPerSec)} P/s`),
       b ? h('dt', {}, 'Boiler bank') : null,
@@ -217,6 +228,17 @@ function renderVeganPanel(app: App): HTMLElement {
     { class: 'panel vegan-panel' },
     h('strong', {}, '🌿 Vegan mode on'),
     h('p', { class: 'muted' }, `Recipes are auto-picked so items come from the plants you allow, using normal recipes and cauldron combos. Your own picks still win. ${reached} items reachable.`),
+    h(
+      'label',
+      { class: 'field', title: 'When several plant-based recipes exist, which one to use' },
+      h('span', {}, 'Pick recipes for'),
+      h(
+        'select',
+        { onchange: (e: Event) => app.update(p => (p.veganGoal = (e.target as HTMLSelectElement).value as 'buildings' | 'coins')) },
+        h('option', { value: 'buildings', selected: plan.veganGoal === 'buildings' }, 'Fewest buildings'),
+        h('option', { value: 'coins', selected: plan.veganGoal === 'coins' }, 'Cheapest (coins)'),
+      ),
+    ),
     h('h3', {}, 'Plant sources'),
     h(
       'div',

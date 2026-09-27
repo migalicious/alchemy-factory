@@ -31,13 +31,27 @@ interface GEdge {
   label: string;
   tip: string;
   weight: number; // stroke width
-  steam?: boolean;
+  /** portal = bought raw input, surplus = leftover byproduct, steam = pipe from boilers. */
+  kind: 'belt' | 'portal' | 'surplus' | 'steam';
 }
 
+// Belt lines are coloured by the zone they come from, so parallel lines can be told apart.
+const PALETTE = ['#7a4fd0', '#2f8f6a', '#c2572e', '#2f79b5', '#b0467f', '#8a7a1f', '#4f5bd5', '#1f8a8a', '#a8541f', '#6d7a2a'];
+const colorFor = (key: string) => {
+  let h = 0;
+  for (const c of key) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return PALETTE[h % PALETTE.length];
+};
+const edgeKind = (from: string, to: string): GEdge['kind'] =>
+  from === 'raw' || from.startsWith('raw:') ? 'portal' : to === 'surplus' || to.startsWith('surplus:') ? 'surplus' : 'belt';
+
 type Mode = 'zones' | 'items';
+type Dir = 'TB' | 'LR';
 let mode: Mode = 'zones';
+let dir: Dir = 'LR';
 try {
   if (localStorage.getItem('af-planner:graph-mode') === 'items') mode = 'items';
+  if (localStorage.getItem('af-planner:graph-dir') === 'TB') dir = 'TB';
 } catch {
   /* ignore */
 }
@@ -66,7 +80,7 @@ function zoneGraph(app: App): { nodes: GNode[]; edges: GEdge[] } {
     });
   }
   const raws = Object.keys(result.raw);
-  if (raws.length) nodes.push({ id: 'raw', kind: 'raw', lines: ['📦 Inputs', listClip(raws), `${raws.length} item${raws.length === 1 ? '' : 's'} from outside`], tip: itemList(new Map(Object.entries(result.raw))).join('\n') });
+  if (raws.length) nodes.push({ id: 'raw', kind: 'raw', lines: ['🛒 Purchasing Portal', listClip(raws), `${raws.length} item${raws.length === 1 ? '' : 's'} bought in`], tip: itemList(new Map(Object.entries(result.raw))).join('\n') });
   const targets = plan.targets.filter(t => t.rate > 0);
   if (targets.length) nodes.push({ id: 'target', kind: 'target', lines: ['🎯 Output', listClip(targets.map(t => `${fmt(t.rate)} ${t.item}`), 2)], tip: targets.map(t => `${fmt(t.rate)}/min ${t.item}`).join('\n') });
   const surplus = Object.keys(result.surplus);
@@ -78,9 +92,16 @@ function zoneGraph(app: App): { nodes: GNode[]; edges: GEdge[] } {
 
   const edges: GEdge[] = zoneFlows(app).map(f => {
     const names = [...f.items.keys()];
-    return { from: f.from, to: f.to, label: listClip(names, 2), tip: itemList(f.items).join('\n'), weight: Math.min(6, 1.2 + names.length * 0.6) };
+    return { from: f.from, to: f.to, label: listClip(names, 2), tip: itemList(f.items).join('\n'), weight: Math.min(6, 1.2 + names.length * 0.6), kind: edgeKind(f.from, f.to) };
   });
-  // Steam travels by pipe, not belt: heated zones show ♨ in their box instead of drawing edges.
+  if (heat.boiler) {
+    const steamZones = new Map<string, number>();
+    for (const lh of heat.lines.values()) {
+      const z = `m:${app.result.lines.find(l => l.recipe.id === lh.recipeId)?.recipe.machine}`;
+      if (lh.device === 'Steam Heating Pad') steamZones.set(z, (steamZones.get(z) ?? 0) + lh.steamPerMin);
+    }
+    for (const [z, st] of steamZones) edges.push({ from: 'boiler', to: z, label: `${fmt(st)} steam`, tip: `${fmt(st)} steam/min`, weight: 1.5, kind: 'steam' });
+  }
   return { nodes, edges };
 }
 
@@ -99,7 +120,7 @@ function itemGraph(app: App): { nodes: GNode[]; edges: GEdge[] } {
       onClick: () => app.openPicker(item),
     });
   }
-  for (const [item, rate] of Object.entries(result.raw)) nodes.push({ id: `raw:${item}`, kind: 'raw', lines: [`📦 ${item}`, `${fmt(rate)}/min from outside`], tip: item, onClick: () => app.openPicker(item) });
+  for (const [item, rate] of Object.entries(result.raw)) nodes.push({ id: `raw:${item}`, kind: 'raw', lines: [`🛒 ${item}`, `${fmt(rate)}/min from Purchasing Portal`], tip: item, onClick: () => app.openPicker(item) });
   for (const t of plan.targets) if (t.rate > 0) nodes.push({ id: `target:${t.item}`, kind: 'target', lines: [`🎯 ${t.item}`, `${fmt(t.rate)}/min`], tip: t.item });
   for (const [item, rate] of Object.entries(result.surplus)) nodes.push({ id: `surplus:${item}`, kind: 'surplus', lines: [`↗ ${item}`, `surplus ${fmt(rate)}/min`], tip: item });
   if (heat.boiler) {
@@ -109,11 +130,12 @@ function itemGraph(app: App): { nodes: GNode[]; edges: GEdge[] } {
   const pairs = new Map<string, GEdge & { items: Map<string, number> }>();
   for (const f of result.flows) {
     const key = `${f.from}→${f.to}`;
-    const e = pairs.get(key) ?? { from: f.from, to: f.to, label: '', tip: '', weight: 1.4, items: new Map() };
+    const e = pairs.get(key) ?? { from: f.from, to: f.to, label: '', tip: '', weight: 1.4, kind: edgeKind(f.from, f.to), items: new Map() };
     e.items.set(f.item, (e.items.get(f.item) ?? 0) + f.rate);
     pairs.set(key, e);
   }
-  const edges: GEdge[] = [...pairs.values()].map(e => ({ ...e, label: '', tip: itemList(e.items).join('\n') }));
+  const edges: GEdge[] = [...pairs.values()].map(e => ({ ...e, label: listClip([...e.items.keys()], 2), tip: itemList(e.items).join('\n') }));
+  if (heat.boiler) for (const lh of heat.lines.values()) if (lh.device === 'Steam Heating Pad') edges.push({ from: 'boiler', to: lh.recipeId, label: `${fmt(lh.steamPerMin)} steam`, tip: `${fmt(lh.steamPerMin)} steam/min`, weight: 1.2, kind: 'steam' });
   return { nodes, edges };
 }
 
@@ -129,7 +151,7 @@ export function renderGraph(app: App, root: HTMLElement): void {
 
   const layout = (withClusters: boolean) => {
     const g = new dagre.graphlib.Graph({ compound: withClusters });
-    g.setGraph({ rankdir: 'TB', nodesep: 24, ranksep: mode === 'zones' ? 70 : 50, marginx: 24, marginy: 24 });
+    g.setGraph({ rankdir: dir, nodesep: dir === 'LR' ? 16 : 24, ranksep: dir === 'LR' ? 70 : mode === 'zones' ? 70 : 50, marginx: 24, marginy: 24 });
     g.setDefaultEdgeLabel(() => ({}));
     const clusters = new Set<string>();
     for (const n of nodes) {
@@ -142,7 +164,7 @@ export function renderGraph(app: App, root: HTMLElement): void {
     }
     // Edges point from ingredient to consumer, so raw inputs sit on top and the target at the bottom.
     // (Weight 0 edges make dagre's compound layout throw, so steam edges get weight 1.)
-    for (const e of edges) if (ids.has(e.from) && ids.has(e.to) && e.from !== e.to) g.setEdge(e.from, e.to, { weight: e.steam ? 1 : 2, minlen: 1 });
+    for (const e of edges) if (ids.has(e.from) && ids.has(e.to) && e.from !== e.to) g.setEdge(e.from, e.to, { weight: e.kind === 'steam' ? 1 : 2, minlen: 1 });
     dagre.layout(g);
     return { g, clusters };
   };
@@ -177,8 +199,8 @@ export function renderGraph(app: App, root: HTMLElement): void {
       const mid = pts[Math.floor(pts.length / 2)] ?? { x: 0, y: 0 };
       const el = s(
         'g',
-        { class: `edge ${e.steam ? 'steam' : ''}`, 'data-from': e.from, 'data-to': e.to },
-        s('path', { d, 'marker-end': 'url(#arrow)', 'stroke-width': e.weight }),
+        { class: `edge ${e.kind}`, 'data-from': e.from, 'data-to': e.to },
+        s('path', { d, 'marker-end': 'url(#arrow)', 'stroke-width': e.weight, ...(e.kind === 'belt' ? { style: `stroke:${colorFor(e.from)}` } : {}) }),
         s('path', { d, class: 'hit' }),
         s('title', {}, e.tip),
       );
@@ -233,11 +255,22 @@ export function renderGraph(app: App, root: HTMLElement): void {
   }
 
   // Pan/zoom; keep the view when only numbers change, refit when the shape changes.
-  const key = `${mode}|${nodes.map(n => n.id).sort().join('|')}`;
-  if (key !== lastKey || !view.w) view = { x: 0, y: 0, w: gw, h: gh };
+  const key = `${mode}|${dir}|${nodes.map(n => n.id).sort().join('|')}`;
+  const refit = key !== lastKey || !view.w;
   lastKey = key;
   const apply = () => svg.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
-  apply();
+  /** Show everything if that stays readable; otherwise open at a readable zoom from the inputs end. */
+  const initialView = () => {
+    const r = svg.getBoundingClientRect();
+    if (!r.width || !r.height) return { x: 0, y: 0, w: gw, h: gh };
+    const fitScale = Math.min(r.width / gw, r.height / gh); // screen px per graph unit
+    const readable = 0.75;
+    if (fitScale >= readable) return { x: 0, y: 0, w: gw, h: gh };
+    const w = r.width / readable;
+    const h = r.height / readable;
+    return dir === 'LR' ? { x: 0, y: Math.max(0, (gh - h) / 2), w, h } : { x: Math.max(0, (gw - w) / 2), y: 0, w, h };
+  };
+  if (!refit) apply();
   svg.addEventListener(
     'wheel',
     e => {
@@ -296,6 +329,15 @@ export function renderGraph(app: App, root: HTMLElement): void {
     }
     renderGraph(app, root);
   };
+  const setDir = (d: Dir) => {
+    dir = d;
+    try {
+      localStorage.setItem('af-planner:graph-dir', d);
+    } catch {
+      /* ignore */
+    }
+    renderGraph(app, root);
+  };
   root.replaceChildren(
     h(
       'div',
@@ -306,15 +348,35 @@ export function renderGraph(app: App, root: HTMLElement): void {
         h('button', { class: mode === 'zones' ? 'on' : '', onclick: () => setMode('zones') }, 'Zones'),
         h('button', { class: mode === 'items' ? 'on' : '', onclick: () => setMode('items') }, 'Items'),
       ),
+      h(
+        'div',
+        { class: 'seg' },
+        h('button', { class: dir === 'LR' ? 'on' : '', title: 'Inputs on the left, output on the right', onclick: () => setDir('LR') }, 'Left → right'),
+        h('button', { class: dir === 'TB' ? 'on' : '', title: 'Inputs at the top, output at the bottom', onclick: () => setDir('TB') }, 'Top ↓ down'),
+      ),
       h('button', { onclick: () => ((view = { x: 0, y: 0, w: gw, h: gh }), apply()) }, 'Fit'),
       h(
         'span',
         { class: 'muted small' },
         mode === 'zones'
-          ? 'One box per machine type — build each as an area. Inputs at the top, output at the bottom. Tap a box to see what it gets and sends; tap empty space to reset. The Build tab lists the same as text.'
+          ? 'One box per machine type — build each as an area. Tap a box to see what it gets and sends; tap empty space to reset.'
           : 'One box per item, grouped by machine. Tap to see its connections, tap again to change its recipe.',
       ),
     ),
+    h(
+      'div',
+      { class: 'legend small' },
+      h('span', {}, h('i', { class: 'lg belt' }), 'belt (colour = where it comes from)'),
+      h('span', {}, h('i', { class: 'lg portal' }), 'Purchasing Portal'),
+      hasBoiler(app) ? h('span', {}, h('i', { class: 'lg steam' }), 'steam pipe') : null,
+      h('span', {}, h('i', { class: 'lg surplus' }), 'surplus'),
+    ),
     h('div', { class: 'graph-wrap' }, svg),
   );
+  if (refit) {
+    view = initialView(); // needs the svg in the DOM to know its size
+    apply();
+  }
 }
+
+const hasBoiler = (app: App) => !!app.heat.boiler;

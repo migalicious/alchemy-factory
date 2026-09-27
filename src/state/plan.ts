@@ -122,6 +122,7 @@ export function sanitize(db: GameData, raw: unknown): PlanState | null {
       preferMachines: Array.isArray(s.preferMachines)
         ? s.preferMachines.filter(m => typeof m === 'string' && db.machines[m])
         : base.settings.preferMachines,
+      steamSupply: s.steamSupply === 'boilers' ? 'boilers' : 'existing',
       stacks:
         s.stacks && typeof s.stacks === 'object'
           ? Object.fromEntries(

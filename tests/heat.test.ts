@@ -8,6 +8,7 @@ const db = loadGameData();
 
 function run(targets: Record<string, number>, mutate?: (s: ReturnType<typeof defaultSettings>) => void, overrides = {}) {
   const settings = defaultSettings();
+  settings.steamSupply = 'boilers';
   mutate?.(settings);
   const r = solvePlan(db, { targets: Object.entries(targets).map(([item, rate]) => ({ item, rate })), choices: {}, settings });
   return { r, h: computeHeat(db, r.lines, settings, overrides) };
@@ -68,5 +69,15 @@ describe('boiler bank furnaces', () => {
     const b2 = run({ 'Iron Ingot': (60000 / 9) * 10 * (17 / 20) }, s => (s.furnace = 'Blast Furnace')).h.boiler!;
     expect(b2.boilersCeil).toBe(17);
     expect(b2.furnaces).toBe(5); // ceil(17/4); slot-packing would give ceil(153/42) = 4
+  });
+});
+
+describe('existing steam supply', () => {
+  it('reports steam demand without planning boilers or their fuel', () => {
+    const { h } = run({ 'Iron Ingot': 20 }, s => (s.steamSupply = 'existing'));
+    expect(h.boiler).toBeNull();
+    expect(h.steamPerMin).toBeCloseTo(54);
+    expect(h.totalFuelPerMin).toBe(0);
+    expect(h.devices['Steam Boiler']).toBeUndefined();
   });
 });

@@ -157,14 +157,16 @@ svg.graph:active { cursor: grabbing; }
 .cluster rect { fill: color-mix(in srgb, var(--accent) 5%, transparent); stroke: color-mix(in srgb, var(--accent) 35%, transparent); stroke-dasharray: 5 4; }
 .cluster-label { font-size: 12px; font-weight: 600; fill: var(--accent); }
 /* Edges stay faint until a box is tapped; then only its connections show, with labels. */
-.edge { opacity: .28; }
+.edge { opacity: .45; }
 .edge .edge-label { display: none; }
 svg.focusing .edge:not(.on), svg.focusing .node:not(.on) { opacity: .08; }
 .edge.on { opacity: 1; }
-.edge.on path:not(.hit) { stroke: var(--accent); }
+.edge.on path:not(.hit) { stroke-width: 2.5; }
 .edge.on .edge-label { display: inline; fill: var(--accent); font-weight: 600; }
 .stack-input { width: 56px; text-align: right; }
-.edge.steam path:not(.hit) { stroke: var(--steam); stroke-dasharray: 5 4; }
+.edge.steam path:not(.hit) { stroke: var(--steam); stroke-dasharray: 2 4; stroke-linecap: round; }
+.edge.portal path:not(.hit) { stroke: var(--warn); stroke-dasharray: 7 4; }
+.edge.surplus path:not(.hit) { stroke: var(--muted); stroke-dasharray: 3 3; }
 .arrowhead { fill: var(--edge); }
 .edge-label { font-size: 11px; fill: var(--muted); paint-order: stroke; stroke: var(--surface); stroke-width: 3px; }
 .node rect { fill: var(--surface-2); stroke: var(--border); stroke-width: 1.2; }
@@ -203,3 +205,9 @@ button.option.selected { border-color: var(--accent); background: var(--accent-s
   .view { padding: 10px 16px 16px; }
   .graph-wrap { height: 70vh; }
 }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; margin: -2px 0 8px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.lg { display: inline-block; width: 28px; height: 0; border-top: 2px solid var(--accent); }
+.lg.portal { border-top: 2px dashed var(--warn); }
+.lg.steam { border-top: 2px dotted var(--steam); }
+.lg.surplus { border-top: 2px dashed var(--muted); }
