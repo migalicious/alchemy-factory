@@ -217,10 +217,12 @@ export function solvePlan(db: GameData, input: PlanInput): SolveResult {
     const con = consume.get(item) ?? [];
     const sTot = sup.reduce((a, b) => a + b.rate, 0);
     const cTot = con.reduce((a, b) => a + b.rate, 0);
-    if (cTot - sTot > 1e-7) {
+    // LP results carry ~1e-6 relative noise; don't report that as raw/surplus.
+    const tol = Math.max(1e-6, 1e-5 * Math.max(sTot, cTot));
+    if (cTot - sTot > tol) {
       raw[item] = cTot - sTot;
       sup.push({ from: `raw:${item}`, rate: raw[item] });
-    } else if (sTot - cTot > 1e-7) {
+    } else if (sTot - cTot > tol) {
       surplus[item] = sTot - cTot;
       con.push({ to: `surplus:${item}`, rate: surplus[item] });
     }

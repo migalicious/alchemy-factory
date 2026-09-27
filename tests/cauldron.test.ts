@@ -1,0 +1,71 @@
+import { describe, expect, it } from 'vitest';
+import { loadGameData } from '../src/data/adapter';
+import { cauldronRecipe, cauldronStats, cauldronTargets, recipeFromId, resolve3 } from '../src/cauldron/engine';
+import { herbPool } from '../src/cauldron/pool';
+import { findCombos } from '../src/cauldron/search';
+import { veganPlan } from '../src/cauldron/vegan';
+import { defaultSettings } from '../src/model/settings';
+import { solvePlan } from '../src/solver/solve';
+
+const db = loadGameData();
+const targets = cauldronTargets(db);
+
+describe('cauldron engine', () => {
+  it('interpolates time/heat on cauldronTarget breakpoints', () => {
+    expect(cauldronStats(1)).toEqual({ time: 3, heat: 1 });
+    expect(cauldronStats(100)).toEqual({ time: 6, heat: 20 });
+    expect(cauldronStats(5500)).toEqual({ time: 18, heat: 850 });
+    expect(cauldronStats(2e6)).toEqual({ time: 60, heat: 10000 });
+  });
+
+  it("reproduces the DB's official cauldron recipes that follow the cost rule", () => {
+    expect(resolve3(db, ['Ruby', 'Sapphire', 'Emerald'], targets)).toBe('Philosopherˈs Stone');
+    expect(resolve3(db, ['Perfect Diamond', 'World Tree Core', 'Unstable Catalyst'], targets)).toBe('Sapphire');
+    expect(resolve3(db, ['Moonlit Soap', 'Lapis Lazuli', 'Fertile Catalyst'], targets)).toBe('Emerald');
+  });
+
+  it('never offers a combo that collides with a fixed DB recipe (Ruby)', () => {
+    const combos = findCombos(db, ['Diamond', 'Gold Dust', 'Resonant Catalyst']);
+    const all = [...combos.values()].flat();
+    expect(all.some(c => [...c.inputs].sort().join() === ['Diamond', 'Gold Dust', 'Resonant Catalyst'].sort().join())).toBe(false);
+  });
+
+  it('generated recipe round-trips through its id', () => {
+    const r = cauldronRecipe(db, 'Cauldron', ['Flax', 'Flax', 'Flax'], 'Stone');
+    expect(r.inputs).toEqual({ Flax: 3 });
+    expect(recipeFromId(db, r.id)?.outputs).toEqual({ Stone: 1 });
+  });
+});
+
+describe('herb pool and vegan mode', () => {
+  it('herb pool = herbs + one crafting step (upstream 🌿 preset)', () => {
+    const pool = herbPool(db);
+    for (const n of ['Flax', 'Sage', 'Gentian', 'World Tree Core', 'Flax Fiber', 'Plant Ash', 'Oblivion Essence']) expect(pool.has(n), n).toBe(true);
+    expect(pool.has('Iron Ore')).toBe(false);
+    expect(pool.has('Linen Thread')).toBe(false); // two steps from herbs
+  });
+
+  it("vegan Philosopher's Stone uses no mined raw materials", () => {
+    const v = veganPlan(db);
+    const r = solvePlan(db, { targets: [{ item: 'Philosopherˈs Stone', rate: 1 }], choices: v.choices, extraRecipes: v.recipes, settings: defaultSettings() });
+    expect(r.status).toBe('optimal');
+    for (const raw of Object.keys(r.raw)) expect(v.plantRaws.has(raw), raw).toBe(true);
+  });
+
+  it('every vegan-reachable item solves using only plant raws', () => {
+    const v = veganPlan(db);
+    const bad: string[] = [];
+    for (const item of v.vegan) {
+      if (v.plantRaws.has(item)) continue;
+      const r = solvePlan(db, { targets: [{ item, rate: 1 }], choices: v.choices, extraRecipes: v.recipes, settings: defaultSettings() });
+      const nonPlant = Object.keys(r.raw).filter(k => !v.plantRaws.has(k));
+      if (r.status !== 'optimal' || nonPlant.length) bad.push(`${item}: ${r.status} ${nonPlant.join(',')}`);
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it('without logs, wood items are not vegan', () => {
+    const v = veganPlan(db, { includeLogs: false });
+    expect(v.plantRaws.has('Logs')).toBe(false);
+  });
+});
