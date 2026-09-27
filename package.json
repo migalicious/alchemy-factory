@@ -16,6 +16,7 @@
     "vitest": "^5.0.2"
   },
   "dependencies": {
-    "@dagrejs/dagre": "^3.1.1"
+    "@dagrejs/dagre": "^3.1.1",
+    "yalps": "^0.6.4"
   }
 }
