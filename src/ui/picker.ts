@@ -27,7 +27,7 @@ export function openPicker(app: App, item: string): void {
   const dlg = document.getElementById('picker') as HTMLDialogElement;
   const render = () => {
     const { db, plan, eff } = app;
-    const lookup = recipeLookup(db, eff.extraRecipes, plan.settings.preferMachines);
+    const lookup = recipeLookup(db, eff.extraRecipes, plan.settings.preferMachines, plan.settings.avoidMachines);
     const current = eff.choices[item] === RAW ? RAW : chosenRecipe(lookup, eff.choices, item)?.id;
     const userPick = plan.choices[item];
     const choose = (id: string | null) => {

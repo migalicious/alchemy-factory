@@ -13,8 +13,9 @@ export interface VeganOptions {
   /** Processing steps from plant sources that count as cauldron ingredients. */
   depth?: number;
   cauldron?: CauldronType;
-  /** Preferred machines (so "default" matches the solver's default). */
+  /** Preferred / avoided machines (so "default" matches the solver's default). */
   prefer?: readonly string[];
+  avoid?: readonly string[];
   /** What "best" means when several plant-based recipes exist. */
   goal?: VeganGoal;
   /** Plan settings (speeds, fertilizer) used to count buildings. */
@@ -83,7 +84,7 @@ export function veganPlan(db: GameData, opts: VeganOptions = {}): VeganPlan {
   const exclude = new Set(opts.exclude ?? []);
   const raws = plantRaws(db, exclude);
   const combos = multiStep(db, plantPool(db, { exclude, depth: opts.depth ?? 1 }), opts.cauldron ?? 'Cauldron');
-  const lookup = recipeLookup(db, [], opts.prefer ?? []);
+  const lookup = recipeLookup(db, [], opts.prefer ?? [], opts.avoid ?? opts.settings?.avoidMachines ?? []);
   const cauldron = new Map<string, Recipe>();
   for (const [item, e] of combos) {
     if (!e.combo || exclude.has(item) || e.combo.inputs.some(i => exclude.has(i))) continue;

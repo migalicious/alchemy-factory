@@ -13,6 +13,8 @@ export interface Settings {
   furnace: 'Stone Furnace' | 'Blast Furnace';
   /** Machines whose recipes become the default when an item has alternatives. */
   preferMachines: string[];
+  /** Machines never picked automatically (e.g. Seed Plot: manual harvest, no belts). */
+  avoidMachines: string[];
   /** Where steam comes from: plan a boiler bank, or an existing supply (just report demand). */
   steamSupply: 'existing' | 'boilers';
   /** Machines stacked per floor when building (e.g. Nursery: 3). Default 1. */
@@ -26,6 +28,7 @@ export const defaultSettings = (): Settings => ({
   heating: 'Steam Heating Pad',
   furnace: 'Stone Furnace',
   preferMachines: ['Enhanced Grinder'],
+  avoidMachines: ['Seed Plot'],
   steamSupply: 'existing',
   // Player-reported: plants (Nurseries) stack 3 high per floor.
   stacks: { Nursery: 3 },

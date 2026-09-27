@@ -87,3 +87,16 @@ describe('preferred machines', () => {
     expect(plan({ Sand: 10 }, {}, s).lines.find(l => l.items.includes('Sand'))!.recipe.machine).toBe('Grinder');
   });
 });
+
+describe('avoided machines', () => {
+  it('never plans Seed Plots by default (plain or vegan)', async () => {
+    const { veganPlan } = await import('../src/cauldron/vegan');
+    const v = veganPlan(db, { settings: defaultSettings() });
+    for (const item of ['Flax', 'Sage', 'Moonlit Soap', 'Philosopherˈs Stone']) {
+      for (const choices of [{}, v.choices]) {
+        const r = solvePlan(db, { targets: [{ item, rate: 1 }], choices, extraRecipes: v.recipes, settings: defaultSettings() });
+        expect(r.lines.map(l => l.recipe.machine)).not.toContain('Seed Plot');
+      }
+    }
+  });
+});

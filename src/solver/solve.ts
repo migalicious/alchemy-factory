@@ -60,7 +60,7 @@ const EPS = 1e-9;
  * Recipe index for a plan. `prefer` lists machines whose recipes should be the
  * default when an item has several (e.g. Enhanced Grinder over Grinder).
  */
-export function recipeLookup(db: GameData, extra: Recipe[] = [], prefer: readonly string[] = []) {
+export function recipeLookup(db: GameData, extra: Recipe[] = [], prefer: readonly string[] = [], avoid: readonly string[] = []) {
   const byId = new Map(db.recipesById);
   const byOutput = new Map<string, Recipe[]>();
   for (const [k, v] of db.recipesByOutput) byOutput.set(k, [...v]);
@@ -68,7 +68,7 @@ export function recipeLookup(db: GameData, extra: Recipe[] = [], prefer: readonl
     byId.set(r.id, r);
     for (const o of Object.keys(r.outputs)) byOutput.set(o, [...(byOutput.get(o) ?? []), r]);
   }
-  return { byId, byOutput, prefer };
+  return { byId, byOutput, prefer, avoid };
 }
 
 const sameIO = (a: Recipe, b: Recipe) =>
@@ -82,7 +82,7 @@ const sameIO = (a: Recipe, b: Recipe) =>
  * a preferred machine never changes which ingredients a chain uses.
  */
 export function producibleRecipes(lookup: ReturnType<typeof recipeLookup>, item: string): Recipe[] {
-  const list = (lookup.byOutput.get(item) ?? []).filter(r => !EXTERNAL_MACHINES.has(r.machine));
+  const list = (lookup.byOutput.get(item) ?? []).filter(r => !EXTERNAL_MACHINES.has(r.machine) && !lookup.avoid.includes(r.machine));
   if (!lookup.prefer.length) return list;
   const out: Recipe[] = [];
   for (const r of list) {
@@ -139,7 +139,7 @@ export function batchesPerMachine(db: GameData, recipe: Recipe, settings: Settin
 export function solvePlan(db: GameData, input: PlanInput): SolveResult {
   const { settings, choices } = input;
   const m = mults(settings);
-  const lookup = recipeLookup(db, input.extraRecipes, settings.preferMachines);
+  const lookup = recipeLookup(db, input.extraRecipes, settings.preferMachines, settings.avoidMachines);
   const empty: SolveResult = { status: 'optimal', lines: [], raw: {}, surplus: {}, flows: [], fertPerMin: 0 };
 
   const demand = new Map<string, number>();

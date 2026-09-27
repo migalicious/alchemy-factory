@@ -116,6 +116,21 @@ export function renderSidebar(app: App, root: HTMLElement): void {
       }),
       h('span', {}, 'Prefer Enhanced Grinder'),
     ),
+    h(
+      'label',
+      { class: 'toggle', title: 'Seed Plots are harvested by hand (no belts), so never plan them; herbs come from Nurseries' },
+      h('input', {
+        type: 'checkbox',
+        checked: plan.settings.avoidMachines.includes('Seed Plot'),
+        onchange: (e: Event) =>
+          app.update(p => {
+            const on = (e.target as HTMLInputElement).checked;
+            p.settings.avoidMachines = p.settings.avoidMachines.filter(m => m !== 'Seed Plot');
+            if (on) p.settings.avoidMachines.push('Seed Plot');
+          }),
+      }),
+      h('span', {}, 'Never use Seed Plots'),
+    ),
   );
 
   const upgrades = h(

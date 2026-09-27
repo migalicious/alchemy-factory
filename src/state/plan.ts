@@ -22,7 +22,7 @@ export interface PlanState {
 export const DEFAULT_VEGAN_EXCLUDE = ['World Tree Leaf', 'World Tree Core'];
 
 /** Research levels the planner opens with (the owner's current game, 2026-09-27). */
-export const DEFAULT_UPGRADES = { logistics: 6, factory: 6, alchemy: 0, fuel: 4, fert: 9 };
+export const DEFAULT_UPGRADES = { logistics: 6, factory: 6, alchemy: 2, fuel: 4, fert: 9 };
 
 export const defaultPlan = (): PlanState => ({
   targets: [{ item: 'Philosopherˈs Stone', rate: 1 }],
@@ -37,7 +37,7 @@ export const defaultPlan = (): PlanState => ({
 
 const veganCache = new Map<string, VeganPlan>();
 export function veganFor(db: GameData, plan: PlanState): VeganPlan {
-  const opts = { exclude: [...plan.veganExclude].sort(), depth: plan.veganDepth, prefer: plan.settings.preferMachines, goal: plan.veganGoal, settings: plan.settings };
+  const opts = { exclude: [...plan.veganExclude].sort(), depth: plan.veganDepth, prefer: plan.settings.preferMachines, avoid: plan.settings.avoidMachines, goal: plan.veganGoal, settings: plan.settings };
   const key = JSON.stringify(opts);
   let v = veganCache.get(key);
   if (!v) {
@@ -125,6 +125,9 @@ export function sanitize(db: GameData, raw: unknown): PlanState | null {
       preferMachines: Array.isArray(s.preferMachines)
         ? s.preferMachines.filter(m => typeof m === 'string' && db.machines[m])
         : base.settings.preferMachines,
+      avoidMachines: Array.isArray(s.avoidMachines)
+        ? s.avoidMachines.filter(m => typeof m === 'string' && db.machines[m])
+        : base.settings.avoidMachines,
       steamSupply: s.steamSupply === 'boilers' ? 'boilers' : 'existing',
       stacks:
         s.stacks && typeof s.stacks === 'object'
