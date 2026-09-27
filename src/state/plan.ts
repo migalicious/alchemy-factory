@@ -21,11 +21,14 @@ export interface PlanState {
 
 export const DEFAULT_VEGAN_EXCLUDE = ['World Tree Leaf', 'World Tree Core'];
 
+/** Research levels the planner opens with (the owner's current game, 2026-09-27). */
+export const DEFAULT_UPGRADES = { logistics: 6, factory: 6, alchemy: 0, fuel: 4, fert: 9 };
+
 export const defaultPlan = (): PlanState => ({
   targets: [{ item: 'Philosopherˈs Stone', rate: 1 }],
   choices: {},
   heating: {},
-  settings: defaultSettings(),
+  settings: { ...defaultSettings(), upgrades: { ...DEFAULT_UPGRADES } },
   vegan: false,
   veganExclude: [...DEFAULT_VEGAN_EXCLUDE],
   veganDepth: 1,
@@ -109,11 +112,11 @@ export function sanitize(db: GameData, raw: unknown): PlanState | null {
     heating: strMap(r.heating, (_, v) => devices.includes(v)) as PlanState['heating'],
     settings: {
       upgrades: {
-        logistics: num(u.logistics, 0),
-        factory: num(u.factory, 0),
-        alchemy: num(u.alchemy, 0),
-        fuel: num(u.fuel, 0),
-        fert: num(u.fert, 0),
+        logistics: num(u.logistics, base.settings.upgrades.logistics),
+        factory: num(u.factory, base.settings.upgrades.factory),
+        alchemy: num(u.alchemy, base.settings.upgrades.alchemy),
+        fuel: num(u.fuel, base.settings.upgrades.fuel),
+        fert: num(u.fert, base.settings.upgrades.fert),
       },
       fuel: s.fuel && db.items[s.fuel]?.heat ? s.fuel : base.settings.fuel,
       fertilizer: s.fertilizer && db.items[s.fertilizer]?.nutrientValue ? s.fertilizer : base.settings.fertilizer,
