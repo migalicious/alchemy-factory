@@ -48,20 +48,6 @@ export function renderSidebar(app: App, root: HTMLElement): void {
     h('button', { class: 'add', onclick: () => app.update(p => p.targets.push({ item: 'Plank', rate: 10 })) }, '+ Add target'),
   );
 
-  const num = (label: string, key: keyof typeof plan.settings.upgrades) =>
-    h(
-      'label',
-      { class: 'field' },
-      h('span', {}, label),
-      h('input', {
-        type: 'number',
-        min: 0,
-        max: 30,
-        value: plan.settings.upgrades[key],
-        onchange: (e: Event) => app.update(p => (p.settings.upgrades[key] = Math.max(0, Math.floor(Number((e.target as HTMLInputElement).value) || 0)))),
-      }),
-    );
-
   const select = (label: string, value: string, options: [string, string][], onchange: (v: string) => void) =>
     h(
       'label',
@@ -133,17 +119,6 @@ export function renderSidebar(app: App, root: HTMLElement): void {
     ),
   );
 
-  const upgrades = h(
-    'details',
-    { class: 'panel' },
-    h('summary', {}, 'Research levels'),
-    num('Logistics (belt speed)', 'logistics'),
-    num('Factory Efficiency', 'factory'),
-    num('Alchemy Skill', 'alchemy'),
-    num('Fuel Efficiency', 'fuel'),
-    num('Fertilizer Efficiency', 'fert'),
-  );
-
   const vegan = plan.vegan ? renderVeganPanel(app) : null;
 
   root.replaceChildren(
@@ -151,7 +126,6 @@ export function renderSidebar(app: App, root: HTMLElement): void {
     h('section', { class: 'panel' }, h('h2', {}, 'Targets'), targets),
     vegan ?? '',
     settings,
-    upgrades,
     renderSummary(app),
   );
 }
@@ -252,6 +226,17 @@ function renderVeganPanel(app: App): HTMLElement {
         { onchange: (e: Event) => app.update(p => (p.veganGoal = (e.target as HTMLSelectElement).value as 'buildings' | 'coins')) },
         h('option', { value: 'buildings', selected: plan.veganGoal === 'buildings' }, 'Fewest buildings'),
         h('option', { value: 'coins', selected: plan.veganGoal === 'coins' }, 'Cheapest (coins)'),
+      ),
+    ),
+    h(
+      'label',
+      { class: 'field', title: 'Plants only, or also let it buy ores from Purchasing Portals when that means fewer buildings' },
+      h('span', {}, 'Ingredients'),
+      h(
+        'select',
+        { onchange: (e: Event) => app.update(p => (p.veganIngredients = (e.target as HTMLSelectElement).value as 'plants' | 'any')) },
+        h('option', { value: 'plants', selected: plan.veganIngredients === 'plants' }, 'Plants only'),
+        h('option', { value: 'any', selected: plan.veganIngredients === 'any' }, 'Plants + bought ores'),
       ),
     ),
     h('h3', {}, 'Plant sources'),

@@ -1,6 +1,6 @@
 import type { GameData, Recipe } from '../model/types';
 import { defaultSettings, type Settings } from '../model/settings';
-import type { Choices, Target } from '../solver/solve';
+import { findLoop, recipeLookup, type Choices, type Target } from '../solver/solve';
 import type { HeatingOverrides } from '../solver/heat';
 import { recipeFromId } from '../cauldron/engine';
 import { veganPlan, type VeganGoal, type VeganPlan } from '../cauldron/vegan';
@@ -17,6 +17,8 @@ export interface PlanState {
   /** Processing steps from plant sources allowed as cauldron ingredients. */
   veganDepth: number;
   veganGoal: VeganGoal;
+  /** plants: only plant raws; any: ores etc. from Purchasing Portals too. */
+  veganIngredients: 'plants' | 'any';
 }
 
 export const DEFAULT_VEGAN_EXCLUDE = ['World Tree Leaf', 'World Tree Core'];
@@ -33,11 +35,12 @@ export const defaultPlan = (): PlanState => ({
   veganExclude: [...DEFAULT_VEGAN_EXCLUDE],
   veganDepth: 1,
   veganGoal: 'buildings',
+  veganIngredients: 'plants',
 });
 
 const veganCache = new Map<string, VeganPlan>();
 export function veganFor(db: GameData, plan: PlanState): VeganPlan {
-  const opts = { exclude: [...plan.veganExclude].sort(), depth: plan.veganDepth, prefer: plan.settings.preferMachines, avoid: plan.settings.avoidMachines, goal: plan.veganGoal, settings: plan.settings };
+  const opts = { exclude: [...plan.veganExclude].sort(), depth: plan.veganDepth, prefer: plan.settings.preferMachines, avoid: plan.settings.avoidMachines, goal: plan.veganGoal, ingredients: plan.veganIngredients, settings: plan.settings };
   const key = JSON.stringify(opts);
   let v = veganCache.get(key);
   if (!v) {
@@ -48,7 +51,10 @@ export function veganFor(db: GameData, plan: PlanState): VeganPlan {
 }
 
 /** Choices + generated recipes the solver should use for this plan. */
-export function effectiveChoices(db: GameData, plan: PlanState): { choices: Choices; extraRecipes: Recipe[]; vegan?: VeganPlan } {
+export function effectiveChoices(
+  db: GameData,
+  plan: PlanState,
+): { choices: Choices; extraRecipes: Recipe[]; vegan?: VeganPlan; /** auto picks dropped because they looped with a user pick */ dropped: string[] } {
   const extra = new Map<string, Recipe>();
   let choices: Choices = { ...plan.choices };
   let vegan: VeganPlan | undefined;
@@ -63,7 +69,26 @@ export function effectiveChoices(db: GameData, plan: PlanState): { choices: Choi
       if (r) extra.set(id, r);
     }
   }
-  return { choices, extraRecipes: [...extra.values()], vegan };
+  const extraRecipes = [...extra.values()];
+  // A user pick can close a loop with an automatic (vegan) pick, e.g. Iron Sand from
+  // Iron Ingot while vegan makes Iron Ingot from Iron Sand. The user wins: the auto
+  // picks in that loop go back to their default recipes.
+  const dropped: string[] = [];
+  const user = Object.keys(plan.choices);
+  if (vegan && user.length) {
+    const lookup = recipeLookup(db, extraRecipes, plan.settings.preferMachines, plan.settings.avoidMachines);
+    for (let i = 0; i < 20; i++) {
+      const loop = findLoop(lookup, choices, [...plan.targets.map(t => t.item), ...user]);
+      if (!loop || !loop.some(item => item in plan.choices)) break;
+      const auto = loop.filter(item => !(item in plan.choices) && choices[item] !== undefined);
+      if (!auto.length) break;
+      for (const item of auto) {
+        delete choices[item];
+        dropped.push(item);
+      }
+    }
+  }
+  return { choices, extraRecipes, vegan, dropped };
 }
 
 // --- (de)serialisation: URL hash + localStorage -------------------------------------
@@ -143,6 +168,7 @@ export function sanitize(db: GameData, raw: unknown): PlanState | null {
         [...DEFAULT_VEGAN_EXCLUDE, ...(r.veganLogs === false ? ['Logs', 'Rotten Log'] : [])],
     veganDepth: Math.min(4, Math.max(0, Math.floor(num(r.veganDepth, 1)))),
     veganGoal: r.veganGoal === 'coins' ? 'coins' : 'buildings',
+    veganIngredients: r.veganIngredients === 'any' ? 'any' : 'plants',
   };
 }
 

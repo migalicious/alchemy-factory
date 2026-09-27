@@ -18,6 +18,8 @@ export interface VeganOptions {
   avoid?: readonly string[];
   /** What "best" means when several plant-based recipes exist. */
   goal?: VeganGoal;
+  /** plants: only plant raws; any: ores etc. from Purchasing Portals are allowed too. */
+  ingredients?: 'plants' | 'any';
   /** Plan settings (speeds, fertilizer) used to count buildings. */
   settings?: Settings;
 }
@@ -101,58 +103,75 @@ export function veganPlan(db: GameData, opts: VeganOptions = {}): VeganPlan {
   const m = mults(settings);
   const fert = db.items[settings.fertilizer];
   const base = buildItemBaseCost(db);
-  const cost = new Map<string, number>();
-  for (const r of raws) cost.set(r, goal === 'coins' ? base.get(r) ?? 0 : 0); // buying from a portal needs no production machines
-  const chosen = new Map<string, Recipe>();
-  const recipeCost = (r: Recipe, item: string): number | null => {
-    let sum = 0;
-    for (const [i, q] of Object.entries(r.inputs)) {
-      const c = cost.get(i);
-      if (c === undefined) return null;
-      sum += c * q;
-    }
-    const mach = db.machines[r.machine];
-    if (goal === 'coins') {
-      if (mach?.heatCost) sum += ((mach.heatCost > 0 ? mach.heatCost : r.heatCost ?? 0) * (r.baseTime || 1)) / HEAT_PER_COPPER; // P/s x s
-      if (r.nutrientCost) sum += r.nutrientCost / NUTR_PER_COPPER;
-    } else {
-      sum += 1 / batchesPerMachine(db, r, settings, m); // machines to run 1 batch/min
-      if (r.nutrientCost && fert?.nutrientValue) {
-        // Fertilizer items per batch x machines per fertilizer; unknown yet => not usable yet.
-        const fertEffort = cost.get(settings.fertilizer);
-        if (fertEffort === undefined) return null;
-        sum += (r.nutrientCost / (fert.nutrientValue * m.fert)) * fertEffort;
-      }
-    }
-    return sum / (r.outputs[item] * (goal === 'buildings' ? yieldMult(r, m.alchemy) : 1));
-  };
+  // Raw inputs bought from Purchasing Portals: plants only, or any raw material.
+  const bought = new Set(raws);
+  if (opts.ingredients === 'any') {
+    for (const [n, it] of Object.entries(db.items)) if (it.category === 'Raw Materials' && !exclude.has(n)) bought.add(n);
+  }
+
   const candidatesFor = new Map<string, Recipe[]>();
   for (const item of Object.keys(db.items)) {
-    if (exclude.has(item) || raws.has(item)) continue;
+    if (exclude.has(item) || bought.has(item)) continue;
     const list = producibleRecipes(lookup, item).filter(r => !r.generated);
     const c = cauldron.get(item);
     if (c) list.push(c);
     if (list.length) candidatesFor.set(item, list);
   }
-  for (let pass = 0; pass < 200; pass++) {
-    let changed = false;
-    for (const [item, list] of candidatesFor) {
-      for (const r of list) {
-        const c = recipeCost(r, item);
-        if (c === null) continue;
-        const cur = cost.get(item);
-        // Default recipe (first in list) wins ties so plans don't churn.
-        if (cur === undefined || c < cur * (1 - 1e-9)) {
-          cost.set(item, c);
-          chosen.set(item, r);
-          changed = true;
+
+  /** One relaxation with a fixed estimate of what a fertilizer item costs. */
+  const relax = (fertEst: number) => {
+    const cost = new Map<string, number>();
+    for (const r of bought) cost.set(r, goal === 'coins' ? base.get(r) ?? 0 : 0); // buying from a portal needs no production machines
+    const chosen = new Map<string, Recipe>();
+    const recipeCost = (r: Recipe, item: string): number | null => {
+      let sum = 0;
+      for (const [i, q] of Object.entries(r.inputs)) {
+        const c = cost.get(i);
+        if (c === undefined) return null;
+        sum += c * q;
+      }
+      const mach = db.machines[r.machine];
+      if (goal === 'coins') {
+        if (mach?.heatCost) sum += ((mach.heatCost > 0 ? mach.heatCost : r.heatCost ?? 0) * (r.baseTime || 1)) / HEAT_PER_COPPER; // P/s x s
+        if (r.nutrientCost) sum += r.nutrientCost / NUTR_PER_COPPER;
+      } else {
+        sum += 1 / batchesPerMachine(db, r, settings, m); // machines to run 1 batch/min
+        // Fertilizer items per batch x machines per fertilizer item.
+        if (r.nutrientCost && fert?.nutrientValue) sum += (r.nutrientCost / (fert.nutrientValue * m.fert)) * fertEst;
+      }
+      return sum / (r.outputs[item] * (goal === 'buildings' ? yieldMult(r, m.alchemy) : 1));
+    };
+    for (let pass = 0; pass < 200; pass++) {
+      let changed = false;
+      for (const [item, list] of candidatesFor) {
+        for (const r of list) {
+          const c = recipeCost(r, item);
+          if (c === null) continue;
+          const cur = cost.get(item);
+          // Default recipe (first in list) wins ties so plans don't churn.
+          if (cur === undefined || c < cur * (1 - 1e-9)) {
+            cost.set(item, c);
+            chosen.set(item, r);
+            changed = true;
+          }
         }
       }
+      if (!changed) break;
     }
-    if (!changed) break;
+    return { cost, chosen };
+  };
+  // Growers need fertilizer and fertilizer needs grown herbs, so iterate: score with a
+  // fertilizer estimate, re-estimate from the result, until it settles.
+  let fertEst = 0;
+  let { cost, chosen } = relax(fertEst);
+  for (let i = 0; i < 8 && goal === 'buildings'; i++) {
+    const next = cost.get(settings.fertilizer);
+    if (next === undefined || Math.abs(next - fertEst) <= 1e-6 * Math.max(1, next)) break;
+    fertEst = next;
+    ({ cost, chosen } = relax(fertEst));
   }
   breakCycles(chosen);
-  const vegan = new Set<string>([...raws, ...chosen.keys()]);
+  const vegan = new Set<string>([...bought, ...chosen.keys()]);
 
   const choices: Record<string, string> = {};
   const recipes: Recipe[] = [];

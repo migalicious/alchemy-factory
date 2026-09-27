@@ -131,6 +131,11 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 
 .tabs { display: flex; gap: 4px; padding: 10px 16px 0; }
 .tabs button[aria-selected='true'] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.status.info { background: var(--accent-soft); color: var(--text); }
+.research { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 13px; }
+.research-label { color: var(--muted); font-weight: 600; }
+.research label { display: inline-flex; align-items: center; gap: 4px; }
+.research input { width: 48px; text-align: right; }
 .status { margin: 10px 16px 0; padding: 8px 12px; border-radius: var(--radius); background: var(--warn-soft); color: var(--warn); }
 .view { padding: 10px 16px 16px; min-height: 0; flex: 1; }
 

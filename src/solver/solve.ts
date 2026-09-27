@@ -136,6 +136,37 @@ export function batchesPerMachine(db: GameData, recipe: Recipe, settings: Settin
   return rate;
 }
 
+/**
+ * First recipe loop reachable from `roots` (items), following each item's chosen
+ * recipe inputs, e.g. ['Iron Sand', 'Iron Ingot']. Null when there is none.
+ */
+export function findLoop(lookup: ReturnType<typeof recipeLookup>, choices: Choices, roots: string[]): string[] | null {
+  const state = new Map<string, 1 | 2>();
+  const stack: string[] = [];
+  const visit = (item: string): string[] | null => {
+    const st = state.get(item);
+    if (st === 2) return null;
+    if (st === 1) return stack.slice(stack.indexOf(item));
+    state.set(item, 1);
+    stack.push(item);
+    const r = chosenRecipe(lookup, choices, item);
+    if (r) {
+      for (const i of Object.keys(r.inputs)) {
+        const loop = visit(i);
+        if (loop) return loop;
+      }
+    }
+    stack.pop();
+    state.set(item, 2);
+    return null;
+  };
+  for (const root of roots) {
+    const loop = visit(root);
+    if (loop) return loop;
+  }
+  return null;
+}
+
 export function solvePlan(db: GameData, input: PlanInput): SolveResult {
   const { settings, choices } = input;
   const m = mults(settings);
@@ -184,10 +215,7 @@ export function solvePlan(db: GameData, input: PlanInput): SolveResult {
     return {
       ...empty,
       status: sol.status === 'infeasible' || sol.status === 'unbounded' ? sol.status : 'error',
-      message:
-        sol.status === 'infeasible'
-          ? 'No way to satisfy this plan with the chosen recipes (probably a loop that consumes what it makes). Try a different recipe or mark an item as raw.'
-          : `Solver status: ${sol.status}`,
+      message: sol.status === 'infeasible' ? infeasibleMessage(lookup, choices, [...demand.keys()]) : `Solver status: ${sol.status}`,
     };
   }
   const rates = new Map(sol.variables);
@@ -257,4 +285,11 @@ export function solvePlan(db: GameData, input: PlanInput): SolveResult {
   }
 
   return { status: 'optimal', lines, raw, surplus, flows, fertPerMin };
+}
+
+function infeasibleMessage(lookup: ReturnType<typeof recipeLookup>, choices: Choices, roots: string[]): string {
+  const loop = findLoop(lookup, choices, roots);
+  return loop
+    ? `These recipes feed each other in a loop, so nothing can get started: ${[...loop, loop[0]].join(' → ')}. Change the recipe of one of them (or mark one as raw).`
+    : 'No way to satisfy this plan with the chosen recipes. Try a different recipe or mark an item as raw.';
 }

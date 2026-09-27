@@ -101,3 +101,19 @@ describe('vegan goal', () => {
     expect(machinesFor('buildings', 'Moonlit Soap', 0.1).total).toBeLessThan(machinesFor('coins', 'Moonlit Soap', 0.1).total);
   });
 });
+
+describe('vegan coverage', () => {
+  it('reaches most items from Nursery-grown plants (no Seed Plots)', () => {
+    const v = veganPlan(db, { exclude: ['World Tree Leaf', 'World Tree Core'], settings: defaultSettings() });
+    expect(defaultSettings().avoidMachines).toContain('Seed Plot');
+    expect(v.vegan.size).toBeGreaterThan(120);
+    expect(v.vegan.has('Iron Ingot')).toBe(true);
+    expect(v.vegan.has('Salt')).toBe(true);
+  });
+  it("vegan Star Dust doesn't buy ores", () => {
+    const v = veganPlan(db, { exclude: ['World Tree Leaf', 'World Tree Core'], settings: defaultSettings() });
+    const r = solvePlan(db, { targets: [{ item: 'Star Dust', rate: 0.5 }], choices: v.choices, extraRecipes: v.recipes, settings: defaultSettings() });
+    expect(r.status).toBe('optimal');
+    for (const raw of Object.keys(r.raw)) expect(v.plantRaws.has(raw), raw).toBe(true);
+  });
+});

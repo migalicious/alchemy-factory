@@ -8,6 +8,7 @@ import { renderSidebar } from './ui/sidebar';
 import { renderTable } from './ui/table';
 import { renderGraph } from './ui/graph';
 import { renderBuild } from './ui/build';
+import { renderResearch } from './ui/research';
 import { openPicker } from './ui/picker';
 import { toast } from './ui/dom';
 
@@ -55,9 +56,15 @@ function recompute() {
 
 function render() {
   renderSidebar(app, document.getElementById('sidebar')!);
+  renderResearch(app, document.getElementById('research')!);
   const status = document.getElementById('status')!;
-  status.hidden = app.result.status === 'optimal';
-  status.textContent = app.result.message ?? '';
+  const notes: string[] = [];
+  if (app.result.status !== 'optimal') notes.push(app.result.message ?? '');
+  if (app.eff.dropped.length)
+    notes.push(`To avoid a loop with your own recipe pick, these went back to their normal recipe instead of the vegan one: ${app.eff.dropped.join(', ')}.`);
+  status.hidden = !notes.length;
+  status.classList.toggle('info', app.result.status === 'optimal');
+  status.textContent = notes.join(' ');
   (document.getElementById('vegan') as HTMLInputElement).checked = app.plan.vegan;
   for (const b of document.querySelectorAll<HTMLButtonElement>('.tabs button')) b.setAttribute('aria-selected', String(b.dataset.tab === tab));
   const views: Record<Tab, (a: App, el: HTMLElement) => void> = { table: renderTable, build: renderBuild, graph: renderGraph };
