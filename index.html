@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Alchemy Factory production planner with steam heating and vegan (plant-only) cauldron recipes." />
+    <title>Alchemy Factory Planner</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚗️</text></svg>" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>⚗️ Alchemy Factory Planner</h1>
+      <div class="topbar-actions">
+        <label class="toggle" title="Make everything from plants: seeds, herbs (and logs), using normal recipes plus cauldron combos">
+          <input type="checkbox" id="vegan" /> <span>🌿 Vegan</span>
+        </label>
+        <button id="share" type="button">🔗 Copy share link</button>
+      </div>
+    </header>
+    <div class="layout">
+      <aside class="sidebar" id="sidebar"></aside>
+      <main class="main">
+        <nav class="tabs" role="tablist">
+          <button role="tab" data-tab="table" aria-selected="true">Table</button>
+          <button role="tab" data-tab="graph" aria-selected="false">Graph</button>
+        </nav>
+        <div id="status" class="status" hidden></div>
+        <section id="view-table" class="view"></section>
+        <section id="view-graph" class="view" hidden></section>
+      </main>
+    </div>
+    <footer class="footer">
+      Game data and formulas from
+      <a href="https://github.com/starfi5h/AlchemyFactoryCalculator" target="_blank" rel="noopener">starfi5h/AlchemyFactoryCalculator</a>
+      (DB <span id="dbver"></span>) — all credit to them. Not affiliated with the game.
+    </footer>
+    <dialog id="picker" class="picker"></dialog>
+    <div id="toast" class="toast" hidden></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
