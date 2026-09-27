@@ -8,8 +8,14 @@ describe('game data adapter', () => {
     expect(Object.keys(db.items).length).toBe(157);
     expect(db.recipesByOutput.get('Iron Ingot')?.map(r => r.id)).toContain('Iron Ingot');
   });
-  it('drops custom-input recipes', () => {
+  it('expands the Paradox Crucible custom-input recipe per item', () => {
     expect(db.recipesById.has('Oblivion Essence (Custom)')).toBe(false);
+    const lav = db.recipesById.get('Oblivion Essence (Paradox: Lavender)')!;
+    expect(lav.machine).toBe('Paradox Crucible');
+    expect(lav.inputs).toEqual({ Lavender: 1 });
+    expect(lav.baseTime).toBeCloseTo(8.333);
+    // Explicit recipes aren't duplicated
+    expect(db.recipesById.has('Oblivion Essence (Paradox: Gentian)')).toBe(false);
   });
   it('every recipe references known items and machines', () => {
     for (const r of db.recipes) {

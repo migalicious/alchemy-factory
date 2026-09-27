@@ -220,3 +220,5 @@ button.option.selected { border-color: var(--accent); background: var(--accent-s
 .starter p { margin: 4px 0 8px; }
 .starter-list { margin: 0; padding-left: 22px; columns: 2 280px; column-gap: 24px; }
 .starter-list li { break-inside: avoid; padding: 1px 0; }
+.recipe-filter { width: 100%; margin-bottom: 6px; }
+button.option[hidden] { display: none; }

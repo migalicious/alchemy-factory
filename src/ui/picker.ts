@@ -82,7 +82,7 @@ export function openPicker(app: App, item: string): void {
           userPick ? h('button', { type: 'button', class: 'option small', onclick: () => choose(null) }, plan.vegan ? '↺ Reset to vegan/default pick' : '↺ Reset to default') : null,
         ),
         h('h3', {}, 'Recipes'),
-        recipeButtons.length ? h('div', { class: 'options' }, ...recipeButtons) : h('p', { class: 'muted' }, 'Only obtainable by buying it.'),
+        recipeButtons.length ? recipeList(recipeButtons) : h('p', { class: 'muted' }, 'Only obtainable by buying it.'),
         isCandidateTarget
           ? h(
               'div',
@@ -107,4 +107,22 @@ export function openPicker(app: App, item: string): void {
   };
   render();
   if (!dlg.open) dlg.showModal();
+}
+
+/** Recipe options; long lists (e.g. Paradox Crucible: any item) get a filter box. */
+function recipeList(buttons: HTMLButtonElement[]): HTMLElement {
+  const box = h('div', { class: 'options' }, ...buttons);
+  if (buttons.length <= 10) return box;
+  const input = h('input', { type: 'search', placeholder: `Filter ${buttons.length} recipes, e.g. Lavender`, 'aria-label': 'Filter recipes', class: 'recipe-filter' });
+  const apply = () => {
+    const q = input.value.trim().toLowerCase();
+    buttons.forEach((b, i) => {
+      // Unfiltered: show the first 8 plus the current pick; filtered: every match.
+      const match = q ? b.textContent!.toLowerCase().includes(q) : i < 8 || b.classList.contains('selected');
+      b.hidden = !match;
+    });
+  };
+  input.addEventListener('input', apply);
+  apply();
+  return h('div', {}, input, box);
 }

@@ -262,9 +262,9 @@ function renderVeganPanel(app: App): HTMLElement {
     ),
     h(
       'label',
-      { class: 'toggle', title: 'Off: cauldrons only get broken-down items (Iron Ingot, Plank, Salt…), never a whole bought unit of ore or logs' },
+      { class: 'toggle', title: 'Off: cauldrons and the Paradox Crucible only get broken-down items (Iron Ingot, Plank, Salt…), never a whole bought unit of ore or logs' },
       h('input', { type: 'checkbox', checked: plan.veganRawInCauldron, onchange: (e: Event) => app.update(p => (p.veganRawInCauldron = (e.target as HTMLInputElement).checked)) }),
-      h('span', {}, 'Allow bought raws straight into cauldrons'),
+      h('span', {}, 'Allow bought raws straight into cauldrons / Paradox Crucible'),
     ),
     h('h3', {}, 'Avoid'),
     h(

@@ -147,3 +147,17 @@ describe('low-rate plans prefer fewer lines', () => {
     expect(r.lines.length).toBeLessThanOrEqual(3);
   });
 });
+
+describe('Paradox Crucible any-item recipes', () => {
+  it('vegan picks feed it grown/processed items, not bought raws', async () => {
+    const { defaultPlan, effectiveChoices } = await import('../src/state/plan');
+    const plan = defaultPlan();
+    plan.targets = [{ item: 'Oblivion Essence', rate: 1 }];
+    plan.vegan = true;
+    const e = effectiveChoices(db, plan);
+    const r = solvePlan(db, { targets: plan.targets, choices: e.choices, extraRecipes: e.extraRecipes, settings: plan.settings });
+    const line = r.lines.find(l => l.items.includes('Oblivion Essence'))!;
+    expect(line.recipe.machine).toBe('Paradox Crucible');
+    for (const i of Object.keys(line.recipe.inputs)) expect(db.items[i].category).not.toBe('Raw Materials');
+  });
+});

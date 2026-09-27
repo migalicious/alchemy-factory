@@ -127,7 +127,10 @@ export function veganPlan(db: GameData, opts: VeganOptions = {}): VeganPlan {
   const candidatesFor = new Map<string, Recipe[]>();
   for (const item of Object.keys(db.items)) {
     if (exclude.has(item) || bought.has(item)) continue;
-    const list = producibleRecipes(lookup, item).filter(r => !r.generated);
+    // Transmuters (Paradox Crucible) eat whole bought units too; same rule as cauldrons.
+    const rawIntoTransmuter = (r: Recipe) =>
+      !opts.rawInCauldron && r.machine === 'Paradox Crucible' && Object.keys(r.inputs).some(i => db.items[i]?.category === 'Raw Materials');
+    const list = producibleRecipes(lookup, item).filter(r => !r.generated && !rawIntoTransmuter(r));
     list.push(...(cauldron.get(item) ?? []));
     if (list.length) candidatesFor.set(item, list);
   }

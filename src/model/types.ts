@@ -12,6 +12,9 @@ export interface ItemDef {
   nutrientValue?: number;
   maxFertility?: number;
   cauldronCost?: number;
+  /** Paradox Crucible seconds per item (custom-input recipes). */
+  paradoxTime?: number;
+  baseCost?: number;
   cauldronTarget?: number;
   cauldronMulti?: number;
   liquid?: boolean;
