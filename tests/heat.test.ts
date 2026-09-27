@@ -53,3 +53,20 @@ describe('computeHeat', () => {
     expect(h.lines.get('Philosopherˈs Stone')!.heatPerSec).toBeCloseTo(10000);
   });
 });
+
+describe('boiler bank furnaces', () => {
+  // 20 boilers' worth of steam: Iron Smelters at 9 P/s, 3000 P/s per boiler => 60000 P/s => 6667 smelters.
+  const heavy = { 'Iron Ingot': (60000 / 9) * 10 };
+  it('one boiler per Stone Furnace', () => {
+    const b = run(heavy).h.boiler!;
+    expect(b.boilersCeil).toBe(20);
+    expect(b.furnaces).toBe(20);
+  });
+  it('four whole boilers per Blast Furnace', () => {
+    const b = run(heavy, s => (s.furnace = 'Blast Furnace')).h.boiler!;
+    expect(b.furnaces).toBe(5); // 20 / 4
+    const b2 = run({ 'Iron Ingot': (60000 / 9) * 10 * (17 / 20) }, s => (s.furnace = 'Blast Furnace')).h.boiler!;
+    expect(b2.boilersCeil).toBe(17);
+    expect(b2.furnaces).toBe(5); // ceil(17/4); slot-packing would give ceil(153/42) = 4
+  });
+});

@@ -30,6 +30,6 @@ contributors. See `src/data/SOURCE.md` for the exact commit and how to update. N
 
 ## Known assumptions
 
-- A Steam Boiler is assumed to take 9 furnace slots (a full Stone Furnace). The DB doesn't say. Change it in
-  `src/data/overrides.ts`.
+- A Steam Boiler takes 9 furnace slots, based on player reports (the DB doesn't say). That's 1 per Stone Furnace and
+  4 per Blast Furnace, in whole boilers. Change it in `src/data/overrides.ts`.
 - Machines with no `slotsRequired` in the DB (Cauldron, Advanced Cauldron) are treated as 1 slot, like upstream. They're marked with `?`.

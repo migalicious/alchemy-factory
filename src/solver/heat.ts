@@ -81,7 +81,8 @@ export function computeHeat(db: GameData, lines: Line[], settings: Settings, ove
     const boilersCeil = Math.ceil(boilers - 1e-6);
     const heatPerSec = (steamPerMin * STEAM_P) / 60; // boiler turns furnace heat 1:1 into steam
     const furnace = settings.furnace;
-    const furnaces = Math.ceil((boilersCeil * STEAM_BOILER_SLOTS) / (db.machines[furnace]?.slots ?? 9) - 1e-9);
+    const perFurnace = Math.max(1, Math.floor((db.machines[furnace]?.slots ?? 9) / STEAM_BOILER_SLOTS));
+    const furnaces = Math.ceil(boilersCeil / perFurnace);
     const fuelPerMin = perFuel(heatPerSec);
     devices[furnace] = (devices[furnace] ?? 0) + furnaces;
     devices['Steam Boiler'] = boilersCeil;

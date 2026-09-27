@@ -2,7 +2,9 @@
 
 /**
  * Furnace slots a Steam Boiler occupies. The DB has no slotsRequired for it.
- * UNVERIFIED — assumed to fill a whole Stone Furnace (9 slots). Confirm in-game.
+ * Player-reported (2026-09-27): a 3x3 boiler fills a whole Stone Furnace, and a
+ * Blast Furnace fits more. Boilers are whole machines, so a furnace holds
+ * floor(slots / 9): 1 per Stone Furnace, 4 per Blast Furnace (42 slots, 7x6).
  */
 export const STEAM_BOILER_SLOTS = 9;
 

@@ -167,7 +167,7 @@ function renderSummary(app: App): HTMLElement {
             'dd',
             {},
             `${b.boilersCeil} Steam Boiler${b.boilersCeil === 1 ? '' : 's'} (${fmt(b.boilers)}) on ${b.furnaces} ${b.furnace}${b.furnaces === 1 ? '' : 's'} · ${fmt(b.steamPerMin)} steam/min · ${fmt(b.fuelPerMin)} ${fuel}/min`,
-            h('span', { class: 'muted small', title: 'The DB has no slot size for Steam Boiler; please confirm in-game' }, ` (assumes ${STEAM_BOILER_SLOTS} furnace slots per boiler — unverified)`),
+            h('span', { class: 'muted small' }, ` (a boiler takes ${STEAM_BOILER_SLOTS} furnace slots: 1 per Stone Furnace, 4 per Blast Furnace)`),
           )
         : null,
       result.fertPerMin > 0 ? h('dt', {}, 'Fertilizer') : null,
