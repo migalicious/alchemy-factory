@@ -7,6 +7,7 @@ import type { App } from './ui/app';
 import { renderSidebar } from './ui/sidebar';
 import { renderTable } from './ui/table';
 import { renderGraph } from './ui/graph';
+import { renderBuild } from './ui/build';
 import { openPicker } from './ui/picker';
 import { toast } from './ui/dom';
 
@@ -22,9 +23,11 @@ function initialPlan(): PlanState {
   return loadLocal(db) ?? defaultPlan();
 }
 
-let tab: 'table' | 'graph' = 'table';
+type Tab = 'table' | 'build' | 'graph';
+let tab: Tab = 'table';
 try {
-  if (localStorage.getItem('af-planner:tab') === 'graph') tab = 'graph';
+  const saved = localStorage.getItem('af-planner:tab');
+  if (saved === 'graph' || saved === 'build') tab = saved;
 } catch {
   /* ignore */
 }
@@ -57,12 +60,12 @@ function render() {
   status.textContent = app.result.message ?? '';
   (document.getElementById('vegan') as HTMLInputElement).checked = app.plan.vegan;
   for (const b of document.querySelectorAll<HTMLButtonElement>('.tabs button')) b.setAttribute('aria-selected', String(b.dataset.tab === tab));
-  const tableEl = document.getElementById('view-table')!;
-  const graphEl = document.getElementById('view-graph')!;
-  tableEl.hidden = tab !== 'table';
-  graphEl.hidden = tab !== 'graph';
-  if (tab === 'table') renderTable(app, tableEl);
-  else renderGraph(app, graphEl);
+  const views: Record<Tab, (a: App, el: HTMLElement) => void> = { table: renderTable, build: renderBuild, graph: renderGraph };
+  for (const t of Object.keys(views) as Tab[]) {
+    const el = document.getElementById(`view-${t}`)!;
+    el.hidden = t !== tab;
+    if (t === tab) views[t](app, el);
+  }
 }
 
 document.getElementById('dbver')!.textContent = `v${db.version}, ${db.date}, game ${db.gameVersion}`;
@@ -78,7 +81,7 @@ document.getElementById('share')!.addEventListener('click', async () => {
 });
 for (const b of document.querySelectorAll<HTMLButtonElement>('.tabs button')) {
   b.addEventListener('click', () => {
-    tab = b.dataset.tab as typeof tab;
+    tab = b.dataset.tab as Tab;
     try {
       localStorage.setItem('af-planner:tab', tab);
     } catch {

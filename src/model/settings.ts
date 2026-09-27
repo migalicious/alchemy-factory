@@ -13,6 +13,8 @@ export interface Settings {
   furnace: 'Stone Furnace' | 'Blast Furnace';
   /** Machines whose recipes become the default when an item has alternatives. */
   preferMachines: string[];
+  /** Machines stacked per floor when building (e.g. Nursery: 3). Default 1. */
+  stacks: Record<string, number>;
 }
 
 export const defaultSettings = (): Settings => ({
@@ -22,6 +24,8 @@ export const defaultSettings = (): Settings => ({
   heating: 'Steam Heating Pad',
   furnace: 'Stone Furnace',
   preferMachines: ['Enhanced Grinder'],
+  // Player-reported: plants (Nurseries) stack 3 high per floor.
+  stacks: { Nursery: 3 },
 });
 
 export interface Mults {

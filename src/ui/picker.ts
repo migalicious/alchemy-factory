@@ -2,18 +2,24 @@ import type { App } from './app';
 import { fmt, h } from './dom';
 import { recipeLabel, recipeSummary } from './describe';
 import { cauldronRecipe } from '../cauldron/engine';
-import { allPool, herbPool } from '../cauldron/pool';
+import { allPool, plantPool } from '../cauldron/pool';
 import { findCombos, type Combo } from '../cauldron/search';
 import { chosenRecipe, producibleRecipes, recipeLookup, RAW } from '../solver/solve';
-import type { GameData } from '../model/types';
 
 type PoolKind = 'herb' | 'all';
-const comboCache = new Map<PoolKind, Map<string, Combo[]>>();
+const comboCache = new Map<string, Map<string, Combo[]>>();
 let poolKind: PoolKind = 'herb';
 
-function combos(db: GameData, kind: PoolKind): Map<string, Combo[]> {
-  let c = comboCache.get(kind);
-  if (!c) comboCache.set(kind, (c = findCombos(db, kind === 'herb' ? herbPool(db) : allPool(db))));
+/** Combos from the plant pool (per the plan's vegan settings) or from every item. */
+function combos(app: App, kind: PoolKind): Map<string, Combo[]> {
+  const { db, plan } = app;
+  const key = kind === 'all' ? 'all' : JSON.stringify([[...plan.veganExclude].sort(), plan.veganDepth]);
+  let c = comboCache.get(key);
+  if (!c) {
+    if (comboCache.size > 10) comboCache.clear();
+    const pool = kind === 'all' ? allPool(db) : plantPool(db, { exclude: plan.veganExclude, depth: plan.veganDepth });
+    comboCache.set(key, (c = findCombos(db, pool)));
+  }
   return c;
 }
 
@@ -44,7 +50,8 @@ export function openPicker(app: App, item: string): void {
 
     const comboBox = h('div', { class: 'combos' }, h('p', { class: 'muted' }, 'Searching…'));
     const fillCombos = () => {
-      const list = (combos(db, poolKind).get(item) ?? []).slice(0, 15);
+      const avoid = new Set(app.plan.veganExclude);
+      const list = (combos(app, poolKind).get(item) ?? []).filter(c => poolKind === 'all' || !c.inputs.some(i => avoid.has(i))).slice(0, 15);
       comboBox.replaceChildren(
         ...(list.length
           ? list.map(c => {
@@ -56,7 +63,7 @@ export function openPicker(app: App, item: string): void {
                 h('div', { class: 'muted small' }, `${fmt(r.baseTime ?? 0)} s · ${fmt(r.heatCost ?? 0)} P/s · est. cost ${c.cost === null ? '?' : fmt(c.cost)}`),
               );
             })
-          : [h('p', { class: 'muted' }, poolKind === 'herb' ? 'No single-step herb combo makes this. Try "All items", or turn on 🌿 Vegan for multi-step chains.' : 'No cauldron combo makes this item.')]),
+          : [h('p', { class: 'muted' }, poolKind === 'herb' ? 'No single-step combo from the plant pool makes this. Try "All items", or turn on 🌿 Vegan for multi-step chains.' : 'No cauldron combo makes this item.')]),
       );
     };
     // Defer so the dialog paints before a (possibly ~0.5 s) search.
@@ -87,7 +94,7 @@ export function openPicker(app: App, item: string): void {
                 h(
                   'div',
                   { class: 'seg' },
-                  h('button', { type: 'button', class: poolKind === 'herb' ? 'on' : '', onclick: () => ((poolKind = 'herb'), render()) }, '🌿 Herb pool'),
+                  h('button', { type: 'button', class: poolKind === 'herb' ? 'on' : '', onclick: () => ((poolKind = 'herb'), render()) }, '🌿 Plant pool'),
                   h('button', { type: 'button', class: poolKind === 'all' ? 'on' : '', onclick: () => ((poolKind = 'all'), render()) }, 'All items'),
                 ),
               ),

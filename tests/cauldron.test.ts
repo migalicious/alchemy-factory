@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { loadGameData } from '../src/data/adapter';
 import { cauldronRecipe, cauldronStats, cauldronTargets, recipeFromId, resolve3 } from '../src/cauldron/engine';
-import { herbPool } from '../src/cauldron/pool';
+import { plantPool, plantSources } from '../src/cauldron/pool';
 import { findCombos } from '../src/cauldron/search';
 import { veganPlan } from '../src/cauldron/vegan';
 import { defaultSettings } from '../src/model/settings';
@@ -38,11 +38,27 @@ describe('cauldron engine', () => {
 });
 
 describe('herb pool and vegan mode', () => {
-  it('herb pool = herbs + one crafting step (upstream 🌿 preset)', () => {
-    const pool = herbPool(db);
-    for (const n of ['Flax', 'Sage', 'Gentian', 'World Tree Core', 'Flax Fiber', 'Plant Ash', 'Oblivion Essence']) expect(pool.has(n), n).toBe(true);
+  it('plant pool = plant sources + N processing steps', () => {
+    const pool = plantPool(db);
+    for (const n of ['Flax', 'Sage', 'Gentian', 'World Tree Core', 'Flax Fiber', 'Plant Ash', 'Oblivion Essence', 'Logs', 'Plank']) expect(pool.has(n), n).toBe(true);
     expect(pool.has('Iron Ore')).toBe(false);
-    expect(pool.has('Linen Thread')).toBe(false); // two steps from herbs
+    expect(pool.has('Linen Thread')).toBe(false); // two steps from Flax
+    expect(plantPool(db, { depth: 2 }).has('Linen Thread')).toBe(true);
+    expect(plantPool(db, { depth: 0 }).has('Plank')).toBe(false);
+  });
+
+  it('excluded sources and their products stay out of the pool', () => {
+    const pool = plantPool(db, { exclude: ['World Tree Leaf', 'World Tree Core', 'Logs'] });
+    expect(pool.has('World Tree Core')).toBe(false);
+    expect(pool.has('Plank')).toBe(pool.has('Rotten Log')); // Plank now only via Rotten Log
+    expect(plantSources(db)).toContain('World Tree Leaf');
+  });
+
+  it('vegan mode never uses excluded items in its own picks', () => {
+    const exclude = ['World Tree Leaf', 'World Tree Core'];
+    const v = veganPlan(db, { exclude });
+    expect(v.vegan.has('World Tree Core')).toBe(false);
+    for (const r of v.recipes) for (const i of Object.keys(r.inputs)) expect(exclude, `${r.id}`).not.toContain(i);
   });
 
   it("vegan Philosopher's Stone uses no mined raw materials", () => {
@@ -65,7 +81,8 @@ describe('herb pool and vegan mode', () => {
   });
 
   it('without logs, wood items are not vegan', () => {
-    const v = veganPlan(db, { includeLogs: false });
+    const v = veganPlan(db, { exclude: ['Logs', 'Rotten Log'] });
     expect(v.plantRaws.has('Logs')).toBe(false);
+    expect(v.vegan.has('Plank')).toBe(false);
   });
 });

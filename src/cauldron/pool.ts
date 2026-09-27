@@ -1,27 +1,34 @@
 import type { GameData } from '../model/types';
+import { EXTERNAL_MACHINES } from '../data/overrides';
 import { isCandidate } from './engine';
 
+/** Plant sources: herbs grown in nurseries (items with a nutrientCost) plus logs. */
+export function plantSources(db: GameData): string[] {
+  const herbs = Object.keys(db.items).filter(n => db.items[n].nutrientCost !== undefined && db.items[n].category === 'Herbs');
+  return [...herbs, ...['Logs', 'Rotten Log'].filter(n => db.items[n])];
+}
+
 /**
- * 🌿 Herb ("vegan") pool, as upstream getPresetCandidates('Herbs'):
- * herbs (items with cauldronCost + nutrientCost), plus one round of single-output
- * recipes whose inputs are all herbs (skipping Seed Plot and cauldrons).
+ * Cauldron ingredient pool for vegan mode: the enabled plant sources plus everything
+ * reachable from them in `depth` processing steps (e.g. Logs -> Plank, Flax -> Flax Fiber).
+ * Like upstream's 🌿 preset, Seed Plot and cauldron recipes don't count as processing.
+ * Excluded items are never added and can't be used as inputs.
  */
-export function herbPool(db: GameData): Set<string> {
-  const pool = new Set<string>();
-  const herbs = new Set<string>();
-  for (const [name, it] of Object.entries(db.items)) {
-    if (it.cauldronCost !== undefined && it.nutrientCost !== undefined) {
-      pool.add(name);
-      herbs.add(name);
+export function plantPool(db: GameData, opts: { exclude?: Iterable<string>; depth?: number } = {}): Set<string> {
+  const exclude = new Set(opts.exclude ?? []);
+  const reached = new Set(plantSources(db).filter(n => !exclude.has(n)));
+  for (let step = 0; step < (opts.depth ?? 1); step++) {
+    const fresh: string[] = [];
+    for (const r of db.recipes) {
+      if (r.machine === 'Seed Plot' || r.machine === 'Cauldron' || r.machine === 'Advanced Cauldron' || EXTERNAL_MACHINES.has(r.machine)) continue;
+      const ins = Object.keys(r.inputs);
+      if (!ins.length || !ins.every(i => reached.has(i))) continue;
+      for (const o of Object.keys(r.outputs)) if (!reached.has(o) && !exclude.has(o)) fresh.push(o);
     }
+    if (!fresh.length) break;
+    for (const o of fresh) reached.add(o);
   }
-  for (const r of db.recipes) {
-    if (r.machine === 'Seed Plot' || r.machine === 'Cauldron' || r.machine === 'Advanced Cauldron') continue;
-    const ins = Object.keys(r.inputs);
-    const outs = Object.keys(r.outputs);
-    if (ins.length >= 1 && outs.length === 1 && ins.every(k => herbs.has(k)) && isCandidate(db, outs[0])) pool.add(outs[0]);
-  }
-  return new Set([...pool].filter(n => isCandidate(db, n)));
+  return new Set([...reached].filter(n => isCandidate(db, n)));
 }
 
 export function allPool(db: GameData): Set<string> {

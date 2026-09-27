@@ -12,8 +12,13 @@ export interface PlanState {
   heating: HeatingOverrides;
   settings: Settings;
   vegan: boolean;
-  veganLogs: boolean;
+  /** Plant sources switched off + items to avoid in vegan mode. */
+  veganExclude: string[];
+  /** Processing steps from plant sources allowed as cauldron ingredients. */
+  veganDepth: number;
 }
+
+export const DEFAULT_VEGAN_EXCLUDE = ['World Tree Leaf', 'World Tree Core'];
 
 export const defaultPlan = (): PlanState => ({
   targets: [{ item: 'Philosopherˈs Stone', rate: 1 }],
@@ -21,13 +26,19 @@ export const defaultPlan = (): PlanState => ({
   heating: {},
   settings: defaultSettings(),
   vegan: false,
-  veganLogs: true,
+  veganExclude: [...DEFAULT_VEGAN_EXCLUDE],
+  veganDepth: 1,
 });
 
-const veganCache = new Map<boolean, VeganPlan>();
-export function veganFor(db: GameData, includeLogs: boolean): VeganPlan {
-  let v = veganCache.get(includeLogs);
-  if (!v) veganCache.set(includeLogs, (v = veganPlan(db, { includeLogs })));
+const veganCache = new Map<string, VeganPlan>();
+export function veganFor(db: GameData, plan: PlanState): VeganPlan {
+  const opts = { exclude: [...plan.veganExclude].sort(), depth: plan.veganDepth, prefer: plan.settings.preferMachines };
+  const key = JSON.stringify(opts);
+  let v = veganCache.get(key);
+  if (!v) {
+    if (veganCache.size > 20) veganCache.clear();
+    veganCache.set(key, (v = veganPlan(db, opts)));
+  }
   return v;
 }
 
@@ -37,7 +48,7 @@ export function effectiveChoices(db: GameData, plan: PlanState): { choices: Choi
   let choices: Choices = { ...plan.choices };
   let vegan: VeganPlan | undefined;
   if (plan.vegan) {
-    vegan = veganFor(db, plan.veganLogs);
+    vegan = veganFor(db, plan);
     for (const r of vegan.recipes) extra.set(r.id, r);
     choices = { ...vegan.choices, ...plan.choices };
   }
@@ -80,7 +91,7 @@ export function decodePlan(db: GameData, encoded: string): PlanState | null {
 
 export function sanitize(db: GameData, raw: unknown): PlanState | null {
   if (!raw || typeof raw !== 'object') return null;
-  const r = raw as Partial<PlanState>;
+  const r = raw as Partial<PlanState> & { veganLogs?: boolean };
   const base = defaultPlan();
   const num = (v: unknown, d: number) => (typeof v === 'number' && isFinite(v) && v >= 0 ? v : d);
   const s = (r.settings ?? {}) as Partial<Settings>;
@@ -109,9 +120,19 @@ export function sanitize(db: GameData, raw: unknown): PlanState | null {
       preferMachines: Array.isArray(s.preferMachines)
         ? s.preferMachines.filter(m => typeof m === 'string' && db.machines[m])
         : base.settings.preferMachines,
+      stacks:
+        s.stacks && typeof s.stacks === 'object'
+          ? Object.fromEntries(
+              Object.entries(s.stacks).filter(([m, n]) => db.machines[m] && typeof n === 'number' && n >= 1 && n <= 20).map(([m, n]) => [m, Math.floor(n)]),
+            )
+          : base.settings.stacks,
     },
     vegan: !!r.vegan,
-    veganLogs: r.veganLogs !== false,
+    veganExclude: Array.isArray(r.veganExclude)
+      ? r.veganExclude.filter(i => typeof i === 'string' && db.items[i])
+      : // links from before per-source options: veganLogs=false meant "no logs"
+        [...DEFAULT_VEGAN_EXCLUDE, ...(r.veganLogs === false ? ['Logs', 'Rotten Log'] : [])],
+    veganDepth: Math.min(4, Math.max(0, Math.floor(num(r.veganDepth, 1)))),
   };
 }
 

@@ -28,6 +28,10 @@ export interface MachineDef {
   fertility?: boolean;
   tier: number;
   buildCost?: Record<string, number>;
+  /** Footprint (length, width) and height in tiles. */
+  L?: number;
+  W?: number;
+  H?: number;
 }
 
 export interface Recipe {

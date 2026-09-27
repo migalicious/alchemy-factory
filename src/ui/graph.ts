@@ -3,10 +3,9 @@ import type { App } from './app';
 import { fmt, h } from './dom';
 import { recipeLabel } from './describe';
 import { short } from './table';
+import { buildZones, footprint, zoneFlows } from './zones';
 
 const SVG = 'http://www.w3.org/2000/svg';
-const W = 210;
-const H = 62;
 
 function s<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number> = {}, ...children: (Node | string)[]) {
   const el = document.createElementNS(SVG, tag);
@@ -15,138 +14,247 @@ function s<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, s
   return el;
 }
 
-const clip = (t: string, n = 28) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
+const clip = (t: string, n = 30) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
+const listClip = (items: string[], n = 3) => (items.length > n ? `${items.slice(0, n).join(', ')} +${items.length - n}` : items.join(', '));
 
 interface GNode {
   id: string;
-  kind: 'line' | 'raw' | 'target' | 'surplus' | 'boiler';
-  title: string;
-  sub: string;
-  sub2?: string;
-  item?: string;
+  kind: 'zone' | 'line' | 'raw' | 'target' | 'surplus' | 'boiler';
+  lines: string[]; // text rows; first is the title
+  tip: string;
+  onClick?: () => void;
+  cluster?: string;
+}
+interface GEdge {
+  from: string;
+  to: string;
+  label: string;
+  tip: string;
+  weight: number; // stroke width
+  steam?: boolean;
 }
 
+type Mode = 'zones' | 'items';
+let mode: Mode = 'zones';
+try {
+  if (localStorage.getItem('af-planner:graph-mode') === 'items') mode = 'items';
+} catch {
+  /* ignore */
+}
 let view = { x: 0, y: 0, w: 0, h: 0 };
 let lastKey = '';
 
-export function renderGraph(app: App, root: HTMLElement): void {
+const itemList = (m: Map<string, number>) => [...m].sort((a, b) => b[1] - a[1]).map(([i, r]) => `${fmt(r)} ${i}`);
+
+function zoneGraph(app: App): { nodes: GNode[]; edges: GEdge[] } {
   const { result, heat, plan } = app;
-  if (!result.lines.length) {
-    root.replaceChildren(h('p', { class: 'muted pad' }, 'Add a target to get started.'));
-    return;
+  const nodes: GNode[] = [];
+  for (const z of buildZones(app)) {
+    const fp = footprint(app, z.machine!, z.machines);
+    const steam = z.lines.reduce((a, l) => a + (heat.lines.get(l.recipe.id)?.steamPerMin ?? 0), 0);
+    const fuel = z.lines.reduce((a, l) => a + (heat.lines.get(l.recipe.id)?.fuelPerMin ?? 0), 0);
+    nodes.push({
+      id: z.id,
+      kind: 'zone',
+      lines: [
+        `${z.machine} × ${z.machines}`,
+        listClip(z.items),
+        `${fp.L}×${fp.W}${fp.stack > 1 ? ` · ${fp.stack} per floor` : ''} · ${fp.tiles} tiles${steam ? ` · ♨ ${fmt(steam)}/min` : fuel ? ` · 🔥 ${fmt(fuel)}/min` : ''}`,
+      ],
+      tip: [`${z.machine} × ${z.machines}`, ...z.lines.map(l => `  ${l.items.join(' + ')}: ${l.machinesCeil} (${recipeLabel(l.recipe)})`)].join('\n'),
+      onClick: z.items.length === 1 ? () => app.openPicker(z.items[0]) : undefined,
+    });
   }
-  const nodes = new Map<string, GNode>();
+  const raws = Object.keys(result.raw);
+  if (raws.length) nodes.push({ id: 'raw', kind: 'raw', lines: ['📦 Inputs', listClip(raws), `${raws.length} item${raws.length === 1 ? '' : 's'} from outside`], tip: itemList(new Map(Object.entries(result.raw))).join('\n') });
+  const targets = plan.targets.filter(t => t.rate > 0);
+  if (targets.length) nodes.push({ id: 'target', kind: 'target', lines: ['🎯 Output', listClip(targets.map(t => `${fmt(t.rate)} ${t.item}`), 2)], tip: targets.map(t => `${fmt(t.rate)}/min ${t.item}`).join('\n') });
+  const surplus = Object.keys(result.surplus);
+  if (surplus.length) nodes.push({ id: 'surplus', kind: 'surplus', lines: ['↗ Surplus', listClip(surplus)], tip: itemList(new Map(Object.entries(result.surplus))).join('\n') });
+  if (heat.boiler) {
+    const b = heat.boiler;
+    nodes.push({ id: 'boiler', kind: 'boiler', lines: ['♨️ Boiler bank', `${b.boilersCeil} boilers on ${b.furnaces} ${short(b.furnace)}`, `🔥 ${fmt(b.fuelPerMin)} ${plan.settings.fuel}/min`], tip: `${fmt(b.steamPerMin)} steam/min` });
+  }
+
+  const edges: GEdge[] = zoneFlows(app).map(f => {
+    const names = [...f.items.keys()];
+    return { from: f.from, to: f.to, label: listClip(names, 2), tip: itemList(f.items).join('\n'), weight: Math.min(6, 1.2 + names.length * 0.6) };
+  });
+  // Steam travels by pipe, not belt: heated zones show ♨ in their box instead of drawing edges.
+  return { nodes, edges };
+}
+
+function itemGraph(app: App): { nodes: GNode[]; edges: GEdge[] } {
+  const { result, heat, plan } = app;
+  const nodes: GNode[] = [];
   for (const l of result.lines) {
     const lh = heat.lines.get(l.recipe.id);
     const item = l.items[0] ?? Object.keys(l.outputs)[0];
-    nodes.set(l.recipe.id, {
+    nodes.push({
       id: l.recipe.id,
       kind: 'line',
-      item,
-      title: l.items.join(' + ') || item,
-      sub: `${l.machinesCeil}× ${clip(recipeLabel(l.recipe), 22)}`,
-      sub2: lh ? (lh.device === 'Steam Heating Pad' ? `♨ ${fmt(lh.steamPerMin)} steam/min` : `🔥 ${fmt(lh.fuelPerMin)} ${plan.settings.fuel}/min`) : undefined,
+      cluster: `m:${l.recipe.machine}`,
+      lines: [l.items.join(' + ') || item, `${l.machinesCeil}× ${recipeLabel(l.recipe)}`, lh ? (lh.device === 'Steam Heating Pad' ? `♨ ${fmt(lh.steamPerMin)} steam/min` : `🔥 ${fmt(lh.fuelPerMin)} ${plan.settings.fuel}/min`) : `${fmt(l.outputs[item] ?? 0)}/min`],
+      tip: `${l.items.join(' + ')}\n${recipeLabel(l.recipe)}\n${l.machines.toFixed(2)} machines`,
+      onClick: () => app.openPicker(item),
     });
   }
-  for (const [item, rate] of Object.entries(result.raw)) nodes.set(`raw:${item}`, { id: `raw:${item}`, kind: 'raw', item, title: item, sub: `raw · ${fmt(rate)}/min` });
-  for (const t of plan.targets) if (t.rate > 0) nodes.set(`target:${t.item}`, { id: `target:${t.item}`, kind: 'target', item: t.item, title: `🎯 ${t.item}`, sub: `${fmt(t.rate)}/min` });
-  for (const [item, rate] of Object.entries(result.surplus)) nodes.set(`surplus:${item}`, { id: `surplus:${item}`, kind: 'surplus', item, title: `↗ ${item}`, sub: `surplus ${fmt(rate)}/min` });
+  for (const [item, rate] of Object.entries(result.raw)) nodes.push({ id: `raw:${item}`, kind: 'raw', lines: [`📦 ${item}`, `${fmt(rate)}/min from outside`], tip: item, onClick: () => app.openPicker(item) });
+  for (const t of plan.targets) if (t.rate > 0) nodes.push({ id: `target:${t.item}`, kind: 'target', lines: [`🎯 ${t.item}`, `${fmt(t.rate)}/min`], tip: t.item });
+  for (const [item, rate] of Object.entries(result.surplus)) nodes.push({ id: `surplus:${item}`, kind: 'surplus', lines: [`↗ ${item}`, `surplus ${fmt(rate)}/min`], tip: item });
   if (heat.boiler) {
     const b = heat.boiler;
-    nodes.set('boiler', { id: 'boiler', kind: 'boiler', title: '♨️ Boiler bank', sub: `${b.boilersCeil} boilers · ${b.furnaces} ${short(b.furnace)}`, sub2: `🔥 ${fmt(b.fuelPerMin)} ${plan.settings.fuel}/min` });
+    nodes.push({ id: 'boiler', kind: 'boiler', lines: ['♨️ Boiler bank', `${b.boilersCeil} boilers on ${b.furnaces} ${short(b.furnace)}`], tip: `${fmt(b.steamPerMin)} steam/min` });
   }
-
-  // Merge flows between the same pair of nodes.
-  const edges = new Map<string, { from: string; to: string; label: string[]; steam?: boolean }>();
+  const pairs = new Map<string, GEdge & { items: Map<string, number> }>();
   for (const f of result.flows) {
-    if (!nodes.has(f.from) || !nodes.has(f.to)) continue;
     const key = `${f.from}→${f.to}`;
-    const e = edges.get(key) ?? { from: f.from, to: f.to, label: [] };
-    e.label.push(`${fmt(f.rate)} ${f.item}`);
-    edges.set(key, e);
+    const e = pairs.get(key) ?? { from: f.from, to: f.to, label: '', tip: '', weight: 1.4, items: new Map() };
+    e.items.set(f.item, (e.items.get(f.item) ?? 0) + f.rate);
+    pairs.set(key, e);
   }
-  if (heat.boiler) {
-    for (const lh of heat.lines.values()) {
-      if (lh.device === 'Steam Heating Pad') edges.set(`boiler→${lh.recipeId}`, { from: 'boiler', to: lh.recipeId, label: [`${fmt(lh.steamPerMin)} steam`], steam: true });
-    }
-  }
+  const edges: GEdge[] = [...pairs.values()].map(e => ({ ...e, label: '', tip: itemList(e.items).join('\n') }));
+  return { nodes, edges };
+}
 
-  const g = new dagre.graphlib.Graph({ multigraph: false });
-  g.setGraph({ rankdir: 'RL', nodesep: 18, ranksep: 80, edgesep: 10, marginx: 20, marginy: 20 });
-  g.setDefaultEdgeLabel(() => ({}));
-  for (const n of nodes.values()) g.setNode(n.id, { width: W, height: H });
-  for (const e of edges.values()) g.setEdge(e.from, e.to, { weight: e.steam ? 0 : 1, minlen: e.steam ? 1 : 1 });
-  dagre.layout(g);
+export function renderGraph(app: App, root: HTMLElement): void {
+  if (!app.result.lines.length) {
+    root.replaceChildren(h('p', { class: 'muted pad' }, 'Add a target to get started.'));
+    return;
+  }
+  const { nodes, edges } = mode === 'zones' ? zoneGraph(app) : itemGraph(app);
+  const W = mode === 'zones' ? 250 : 220;
+  const H = 64;
+  const ids = new Set(nodes.map(n => n.id));
+
+  const layout = (withClusters: boolean) => {
+    const g = new dagre.graphlib.Graph({ compound: withClusters });
+    g.setGraph({ rankdir: 'TB', nodesep: 24, ranksep: mode === 'zones' ? 70 : 50, marginx: 24, marginy: 24 });
+    g.setDefaultEdgeLabel(() => ({}));
+    const clusters = new Set<string>();
+    for (const n of nodes) {
+      g.setNode(n.id, { width: W, height: H });
+      if (withClusters && n.cluster) {
+        if (!clusters.has(n.cluster)) g.setNode(n.cluster, { label: n.cluster });
+        clusters.add(n.cluster);
+        g.setParent(n.id, n.cluster);
+      }
+    }
+    // Edges point from ingredient to consumer, so raw inputs sit on top and the target at the bottom.
+    // (Weight 0 edges make dagre's compound layout throw, so steam edges get weight 1.)
+    for (const e of edges) if (ids.has(e.from) && ids.has(e.to) && e.from !== e.to) g.setEdge(e.from, e.to, { weight: e.steam ? 1 : 2, minlen: 1 });
+    dagre.layout(g);
+    return { g, clusters };
+  };
+  let laid: ReturnType<typeof layout>;
+  try {
+    laid = layout(mode === 'items');
+  } catch {
+    laid = layout(false); // dagre's compound layout can fail on some graphs; fall back to no grouping boxes
+  }
+  const { g, clusters } = laid;
   const gg = g.graph();
   const gw = gg.width ?? 800;
   const gh = gg.height ?? 600;
 
-  const edgeEls = [...edges.values()].map(e => {
-    const pts: { x: number; y: number }[] = g.edge(e.from, e.to)?.points ?? [];
-    if (!pts.length) return s('g');
-    const d = pts.map((p, i) => `${i ? 'L' : 'M'}${p.x},${p.y}`).join(' ');
-    const mid = pts[Math.floor(pts.length / 2)];
-    const label = e.label.length > 2 ? [...e.label.slice(0, 2), `+${e.label.length - 2} more`] : e.label;
+  const clusterEls = [...clusters].map(c => {
+    const n = g.node(c);
+    const machine = c.slice(2);
+    const count = app.result.lines.filter(l => l.recipe.machine === machine).reduce((a, l) => a + l.machinesCeil, 0);
     return s(
       'g',
-      { class: `edge ${e.steam ? 'steam' : ''}` },
-      s('path', { d, 'marker-end': 'url(#arrow)' }),
-      s('title', {}, e.label.join('\n')),
-      ...(e.steam ? [] : label.map((t, i) => s('text', { x: mid.x, y: mid.y - 4 + i * 12, 'text-anchor': 'middle', class: 'edge-label' }, clip(t, 26)))),
+      { class: 'cluster' },
+      s('rect', { x: n.x - n.width / 2, y: n.y - n.height / 2, width: n.width, height: n.height, rx: 12 }),
+      s('text', { x: n.x - n.width / 2 + 10, y: n.y - n.height / 2 + 14, class: 'cluster-label' }, `${machine} × ${count}`),
     );
   });
 
-  const nodeEls = [...nodes.values()].map(n => {
+  const edgeEls = edges
+    .filter(e => g.hasEdge(e.from, e.to))
+    .map(e => {
+      const pts: { x: number; y: number }[] = g.edge(e.from, e.to)?.points ?? [];
+      const d = pts.map((p, i) => `${i ? 'L' : 'M'}${p.x},${p.y}`).join(' ');
+      const mid = pts[Math.floor(pts.length / 2)] ?? { x: 0, y: 0 };
+      const el = s(
+        'g',
+        { class: `edge ${e.steam ? 'steam' : ''}`, 'data-from': e.from, 'data-to': e.to },
+        s('path', { d, 'marker-end': 'url(#arrow)', 'stroke-width': e.weight }),
+        s('path', { d, class: 'hit' }),
+        s('title', {}, e.tip),
+      );
+      if (e.label) el.append(s('text', { x: mid.x + 6, y: mid.y, class: 'edge-label' }, clip(e.label, 34)));
+      return el;
+    });
+
+  const nodeEls = nodes.map(n => {
     const p = g.node(n.id);
     const el = s(
       'g',
-      { class: `node ${n.kind}`, transform: `translate(${p.x - W / 2},${p.y - H / 2})`, tabindex: n.item ? 0 : -1 },
+      { class: `node ${n.kind}`, 'data-id': n.id, transform: `translate(${p.x - W / 2},${p.y - H / 2})`, tabindex: 0 },
       s('rect', { width: W, height: H, rx: 8 }),
-      s('text', { x: 10, y: 19, class: 'n-title' }, clip(n.title)),
-      s('text', { x: 10, y: 36, class: 'n-sub' }, clip(n.sub, 32)),
-      n.sub2 ? s('text', { x: 10, y: 52, class: 'n-sub' }, clip(n.sub2, 32)) : '',
-      s('title', {}, [n.title, n.sub, n.sub2 ?? ''].join('\n')),
+      ...n.lines.map((t, i) => s('text', { x: 10, y: 19 + i * 17, class: i ? 'n-sub' : 'n-title' }, clip(t, i ? 38 : 32))),
+      s('title', {}, n.tip),
     );
-    if (n.item) {
-      const open = () => app.openPicker(n.item!);
-      el.addEventListener('click', open);
-      el.addEventListener('keydown', e => (e as KeyboardEvent).key === 'Enter' && open());
-    }
     return el;
   });
 
   const svg = s(
     'svg',
     { class: 'graph', role: 'img', 'aria-label': 'Production graph' },
-    s('defs', {}, s('marker', { id: 'arrow', viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse' }, s('path', { d: 'M0,0 L10,5 L0,10 z', class: 'arrowhead' }))),
-    s('g', {}, ...edgeEls, ...nodeEls),
+    s('defs', {}, s('marker', { id: 'arrow', viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 6, markerHeight: 6, orient: 'auto-start-reverse', markerUnits: 'userSpaceOnUse' }, s('path', { d: 'M0,0 L10,5 L0,10 z', class: 'arrowhead' }))),
+    s('g', {}, ...clusterEls, ...edgeEls, ...nodeEls),
   );
 
-  // Keep pan/zoom when only numbers change; refit when the graph's shape changes.
-  const key = [...nodes.keys()].sort().join('|');
+  // Highlight a node's neighbourhood; click a node again (or its recipe) to open the picker.
+  const byId = new Map(nodes.map(n => [n.id, n]));
+  let focused: string | null = null;
+  const focus = (id: string | null) => {
+    focused = id;
+    svg.classList.toggle('focusing', !!id);
+    const near = new Set<string>(id ? [id] : []);
+    for (const e of edgeEls) {
+      const on = !!id && (e.dataset.from === id || e.dataset.to === id);
+      e.classList.toggle('on', on);
+      if (on) near.add(e.dataset.from!).add(e.dataset.to!);
+    }
+    for (const el of nodeEls) el.classList.toggle('on', near.has(el.dataset.id!));
+  };
+  for (const el of nodeEls) {
+    const n = byId.get(el.dataset.id!)!;
+    const activate = () => {
+      if (focused === n.id && n.onClick) n.onClick();
+      else focus(focused === n.id ? null : n.id);
+    };
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      activate();
+    });
+    el.addEventListener('keydown', e => (e as KeyboardEvent).key === 'Enter' && activate());
+  }
+
+  // Pan/zoom; keep the view when only numbers change, refit when the shape changes.
+  const key = `${mode}|${nodes.map(n => n.id).sort().join('|')}`;
   if (key !== lastKey || !view.w) view = { x: 0, y: 0, w: gw, h: gh };
   lastKey = key;
   const apply = () => svg.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
   apply();
-
   svg.addEventListener(
     'wheel',
     e => {
       e.preventDefault();
       const r = svg.getBoundingClientRect();
-      const k = Math.exp((e as WheelEvent).deltaY * 0.0015);
+      const k = Math.exp(e.deltaY * 0.0015);
       const scale = Math.max(view.w / r.width, view.h / r.height);
-      const px = view.x + ((e as WheelEvent).clientX - r.left) * scale;
-      const py = view.y + ((e as WheelEvent).clientY - r.top) * scale;
+      const px = view.x + (e.clientX - r.left) * scale;
+      const py = view.y + (e.clientY - r.top) * scale;
       view = { x: px - (px - view.x) * k, y: py - (py - view.y) * k, w: view.w * k, h: view.h * k };
       apply();
     },
     { passive: false },
   );
   let drag: { x: number; y: number; vx: number; vy: number; moved: boolean } | null = null;
-  svg.addEventListener('pointerdown', e => {
-    drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false };
-  });
+  let justDragged = false;
+  svg.addEventListener('pointerdown', e => (drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false }));
   svg.addEventListener('pointermove', e => {
     if (!drag) return;
     const r = svg.getBoundingClientRect();
@@ -162,33 +270,50 @@ export function renderGraph(app: App, root: HTMLElement): void {
       apply();
     }
   });
-  let justDragged = false;
   const end = () => {
     justDragged = !!drag?.moved;
     drag = null;
   };
   svg.addEventListener('pointerup', end);
   svg.addEventListener('pointercancel', end);
-  // Swallow the click that ends a drag so it doesn't open the picker.
   svg.addEventListener(
     'click',
     e => {
       if (justDragged) e.stopPropagation();
+      else if (e.target === svg) focus(null);
       justDragged = false;
     },
     true,
   );
+  svg.addEventListener('click', () => focus(null));
 
-  const fit = () => {
-    view = { x: 0, y: 0, w: gw, h: gh };
-    apply();
+  const setMode = (m: Mode) => {
+    mode = m;
+    try {
+      localStorage.setItem('af-planner:graph-mode', m);
+    } catch {
+      /* ignore */
+    }
+    renderGraph(app, root);
   };
   root.replaceChildren(
     h(
       'div',
       { class: 'graph-tools' },
-      h('button', { onclick: fit }, 'Fit'),
-      h('span', { class: 'muted small' }, 'Scroll to zoom · drag to pan · click a box to change its recipe · each item appears once'),
+      h(
+        'div',
+        { class: 'seg' },
+        h('button', { class: mode === 'zones' ? 'on' : '', onclick: () => setMode('zones') }, 'Zones'),
+        h('button', { class: mode === 'items' ? 'on' : '', onclick: () => setMode('items') }, 'Items'),
+      ),
+      h('button', { onclick: () => ((view = { x: 0, y: 0, w: gw, h: gh }), apply()) }, 'Fit'),
+      h(
+        'span',
+        { class: 'muted small' },
+        mode === 'zones'
+          ? 'One box per machine type — build each as an area. Inputs at the top, output at the bottom. Tap a box to see what it gets and sends; tap empty space to reset. The Build tab lists the same as text.'
+          : 'One box per item, grouped by machine. Tap to see its connections, tap again to change its recipe.',
+      ),
     ),
     h('div', { class: 'graph-wrap' }, svg),
   );

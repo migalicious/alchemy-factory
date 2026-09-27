@@ -86,6 +86,11 @@ export function renderTable(app: App, root: HTMLElement): void {
         h('button', { class: 'recipe-btn', onclick: () => app.openPicker(primary), title: 'Change recipe' }, recipeLabel(line.recipe), ' ✎'),
         userPick ? h('span', { class: 'badge', title: 'Your pick' }, '★') : null,
         veganPick ? h('span', { class: 'badge ok', title: 'Vegan pick' }, '🌿') : null,
+        eff.vegan && line.items.some(i => eff.vegan!.exclude.has(i))
+          ? h('span', { class: 'badge warn', title: 'You asked to avoid this, but nothing else can make what this chain needs. Pick another recipe for the item that consumes it.' }, '⚠ avoided')
+          : eff.vegan && !line.items.some(i => eff.vegan!.vegan.has(i))
+            ? h('span', { class: 'badge warn', title: 'Not makeable from your allowed plants' }, '⛏ not plant')
+            : null,
       ),
       h('td', { class: 'num' }, h('strong', {}, `${line.machinesCeil}`), h('span', { class: 'muted small' }, ` (${fmt(line.machines)})`)),
       h('td', {}, outs),

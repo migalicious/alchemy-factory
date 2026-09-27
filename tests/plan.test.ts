@@ -14,6 +14,11 @@ describe('plan state', () => {
     expect(decodePlan(db, encodePlan(p))).toEqual(p);
   });
 
+  it('migrates old links: veganLogs=false excludes logs', () => {
+    const old = btoa(JSON.stringify({ targets: [], vegan: true, veganLogs: false }));
+    expect(decodePlan(db, old)?.veganExclude).toEqual(['World Tree Leaf', 'World Tree Core', 'Logs', 'Rotten Log']);
+  });
+
   it('drops garbage', () => {
     expect(decodePlan(db, 'not-base64!!')).toBeNull();
     const p = decodePlan(db, btoa(JSON.stringify({ targets: [{ item: 'Nope', rate: 1 }], settings: { fuel: 'Nope' } })));

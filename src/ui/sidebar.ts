@@ -2,6 +2,8 @@ import type { App } from './app';
 import { fmt, h } from './dom';
 import type { HeatingDevice } from '../model/types';
 import { STEAM_BOILER_SLOTS } from '../data/overrides';
+import { plantSources } from '../cauldron/pool';
+import { DEFAULT_VEGAN_EXCLUDE } from '../state/plan';
 
 const DEVICES: HeatingDevice[] = ['Steam Heating Pad', 'Stone Furnace', 'Blast Furnace'];
 
@@ -90,6 +92,21 @@ export function renderSidebar(app: App, root: HTMLElement): void {
     ),
     select('Fuel', plan.settings.fuel, fuels, v => app.update(p => (p.settings.fuel = v))),
     select('Fertilizer (Nursery)', plan.settings.fertilizer, ferts, v => app.update(p => (p.settings.fertilizer = v))),
+    h(
+      'label',
+      { class: 'toggle', title: 'Use the Enhanced Grinder (2× speed, same ingredients) wherever a Grinder recipe has one' },
+      h('input', {
+        type: 'checkbox',
+        checked: plan.settings.preferMachines.includes('Enhanced Grinder'),
+        onchange: (e: Event) =>
+          app.update(p => {
+            const on = (e.target as HTMLInputElement).checked;
+            p.settings.preferMachines = p.settings.preferMachines.filter(m => m !== 'Enhanced Grinder');
+            if (on) p.settings.preferMachines.push('Enhanced Grinder');
+          }),
+      }),
+      h('span', {}, 'Prefer Enhanced Grinder'),
+    ),
   );
 
   const upgrades = h(
@@ -103,20 +120,7 @@ export function renderSidebar(app: App, root: HTMLElement): void {
     num('Fertilizer Efficiency', 'fert'),
   );
 
-  const vegan = plan.vegan
-    ? h(
-        'div',
-        { class: 'panel vegan-panel' },
-        h('strong', {}, '🌿 Vegan mode on'),
-        h('p', { class: 'muted' }, 'Recipes are auto-picked so items come from plants, using normal recipes and cauldron combos. Your own picks still win.'),
-        h(
-          'label',
-          { class: 'toggle' },
-          h('input', { type: 'checkbox', checked: plan.veganLogs, onchange: (e: Event) => app.update(p => (p.veganLogs = (e.target as HTMLInputElement).checked)) }),
-          h('span', {}, 'Count logs (trees) as plants'),
-        ),
-      )
-    : null;
+  const vegan = plan.vegan ? renderVeganPanel(app) : null;
 
   root.replaceChildren(
     datalist,
@@ -188,5 +192,67 @@ function renderSummary(app: App): HTMLElement {
         .map(([m, n]) => h('li', {}, h('span', {}, m), h('span', { class: 'num' }, `× ${n}`))),
     ),
     h('p', { class: 'muted small' }, `${db.recipes.length} recipes · game ${db.gameVersion}`),
+  );
+}
+
+function renderVeganPanel(app: App): HTMLElement {
+  const { db, plan, eff } = app;
+  const sources = plantSources(db);
+  const excluded = new Set(plan.veganExclude);
+  const toggle = (item: string, on: boolean) =>
+    app.update(p => {
+      p.veganExclude = p.veganExclude.filter(i => i !== item);
+      if (!on) p.veganExclude.push(item);
+    });
+  const avoided = plan.veganExclude.filter(i => !sources.includes(i));
+  const avoidInput = h('input', { list: 'items-list', placeholder: 'Avoid an item, e.g. Perfect Diamond', 'aria-label': 'Item to avoid' });
+  const addAvoid = () => {
+    const v = avoidInput.value.trim();
+    if (db.items[v] && !excluded.has(v)) app.update(p => p.veganExclude.push(v));
+  };
+  avoidInput.addEventListener('change', addAvoid);
+  const reached = eff.vegan?.vegan.size ?? 0;
+  return h(
+    'div',
+    { class: 'panel vegan-panel' },
+    h('strong', {}, '🌿 Vegan mode on'),
+    h('p', { class: 'muted' }, `Recipes are auto-picked so items come from the plants you allow, using normal recipes and cauldron combos. Your own picks still win. ${reached} items reachable.`),
+    h('h3', {}, 'Plant sources'),
+    h(
+      'div',
+      { class: 'checks' },
+      ...sources.map(src =>
+        h(
+          'label',
+          { class: 'toggle' },
+          h('input', { type: 'checkbox', checked: !excluded.has(src), onchange: (e: Event) => toggle(src, (e.target as HTMLInputElement).checked) }),
+          h('span', {}, src),
+        ),
+      ),
+    ),
+    h(
+      'label',
+      { class: 'field', title: 'How many processing steps from a plant source still count as a cauldron ingredient (Logs → Plank is 1 step)' },
+      h('span', {}, 'Cauldron ingredients: steps from plants'),
+      h('input', {
+        type: 'number',
+        min: 0,
+        max: 4,
+        value: plan.veganDepth,
+        onchange: (e: Event) => app.update(p => (p.veganDepth = Math.min(4, Math.max(0, Math.floor(Number((e.target as HTMLInputElement).value) || 0))))),
+      }),
+    ),
+    h('h3', {}, 'Avoid'),
+    h(
+      'div',
+      { class: 'chips' },
+      ...avoided.map(i => h('button', { class: 'chip', title: 'Stop avoiding', onclick: () => toggle(i, true) }, `${i} ✕`)),
+    ),
+    h('div', { class: 'avoid-row' }, avoidInput, h('button', { onclick: addAvoid }, 'Add')),
+    h(
+      'button',
+      { class: 'link small', onclick: () => app.update(p => (p.veganExclude = [...DEFAULT_VEGAN_EXCLUDE])) },
+      'Reset to defaults',
+    ),
   );
 }
