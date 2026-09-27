@@ -3,7 +3,7 @@ import { defaultSettings, type Settings } from '../model/settings';
 import type { Choices, Target } from '../solver/solve';
 import type { HeatingOverrides } from '../solver/heat';
 import { recipeFromId } from '../cauldron/engine';
-import { veganPlan, type VeganPlan } from '../cauldron/vegan';
+import { veganPlan, type VeganGoal, type VeganPlan } from '../cauldron/vegan';
 
 export interface PlanState {
   targets: Target[];
@@ -16,6 +16,7 @@ export interface PlanState {
   veganExclude: string[];
   /** Processing steps from plant sources allowed as cauldron ingredients. */
   veganDepth: number;
+  veganGoal: VeganGoal;
 }
 
 export const DEFAULT_VEGAN_EXCLUDE = ['World Tree Leaf', 'World Tree Core'];
@@ -28,11 +29,12 @@ export const defaultPlan = (): PlanState => ({
   vegan: false,
   veganExclude: [...DEFAULT_VEGAN_EXCLUDE],
   veganDepth: 1,
+  veganGoal: 'buildings',
 });
 
 const veganCache = new Map<string, VeganPlan>();
 export function veganFor(db: GameData, plan: PlanState): VeganPlan {
-  const opts = { exclude: [...plan.veganExclude].sort(), depth: plan.veganDepth, prefer: plan.settings.preferMachines };
+  const opts = { exclude: [...plan.veganExclude].sort(), depth: plan.veganDepth, prefer: plan.settings.preferMachines, goal: plan.veganGoal, settings: plan.settings };
   const key = JSON.stringify(opts);
   let v = veganCache.get(key);
   if (!v) {
@@ -133,6 +135,7 @@ export function sanitize(db: GameData, raw: unknown): PlanState | null {
       : // links from before per-source options: veganLogs=false meant "no logs"
         [...DEFAULT_VEGAN_EXCLUDE, ...(r.veganLogs === false ? ['Logs', 'Rotten Log'] : [])],
     veganDepth: Math.min(4, Math.max(0, Math.floor(num(r.veganDepth, 1)))),
+    veganGoal: r.veganGoal === 'coins' ? 'coins' : 'buildings',
   };
 }
 

@@ -86,3 +86,18 @@ describe('herb pool and vegan mode', () => {
     expect(v.vegan.has('Plank')).toBe(false);
   });
 });
+
+describe('vegan goal', () => {
+  const machinesFor = (goal: 'buildings' | 'coins', item: string, rate: number) => {
+    const v = veganPlan(db, { exclude: ['World Tree Leaf', 'World Tree Core'], goal });
+    const r = solvePlan(db, { targets: [{ item, rate }], choices: v.choices, extraRecipes: v.recipes, settings: defaultSettings() });
+    return { r, total: r.lines.reduce((a, l) => a + l.machinesCeil, 0) };
+  };
+  it('fewest-buildings picks cauldron Clay', () => {
+    const { r } = machinesFor('buildings', 'Clay', 10);
+    expect(r.lines.find(l => l.items.includes('Clay'))!.recipe.machine).toBe('Cauldron');
+  });
+  it('fewest-buildings needs fewer machines than cheapest-coins', () => {
+    expect(machinesFor('buildings', 'Moonlit Soap', 0.1).total).toBeLessThan(machinesFor('coins', 'Moonlit Soap', 0.1).total);
+  });
+});
