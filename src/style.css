@@ -216,3 +216,7 @@ button.option.selected { border-color: var(--accent); background: var(--accent-s
 .lg.portal { border-top: 2px dashed var(--warn); }
 .lg.steam { border-top: 2px dotted var(--steam); }
 .lg.surplus { border-top: 2px dashed var(--muted); }
+.starter { margin-bottom: 12px; }
+.starter p { margin: 4px 0 8px; }
+.starter-list { margin: 0; padding-left: 22px; columns: 2 280px; column-gap: 24px; }
+.starter-list li { break-inside: avoid; padding: 1px 0; }

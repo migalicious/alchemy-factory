@@ -2,7 +2,7 @@ import type { GameData, Recipe } from '../model/types';
 import { YIELD_MULTIPLIER_MACHINES } from '../model/multipliers';
 import { cauldronRecipe, type CauldronType } from './engine';
 import { sourcePool } from './pool';
-import { multiStep } from './search';
+import { findCombos, multiStep } from './search';
 import { buildItemBaseCost } from './cost';
 import { batchesPerMachine, producibleRecipes, recipeLookup } from '../solver/solve';
 import { defaultSettings, mults, type Settings } from '../model/settings';
@@ -12,6 +12,8 @@ export interface VeganOptions {
   exclude?: Iterable<string>;
   /** Processing steps from plant sources that count as cauldron ingredients. */
   depth?: number;
+  /** Let bought raws go straight into cauldrons (default: only their processed products). */
+  rawInCauldron?: boolean;
   cauldron?: CauldronType;
   /** Preferred / avoided machines (so "default" matches the solver's default). */
   prefer?: readonly string[];
@@ -20,6 +22,13 @@ export interface VeganOptions {
   goal?: VeganGoal;
   /** Plan settings (speeds, fertilizer) used to count buildings. */
   settings?: Settings;
+  /**
+   * Items/min each item is needed at (from a previous solve), and a fallback rate. Every
+   * production line costs at least one building, so at low rates fewer steps matter
+   * more than machine throughput: score = rate x machines-per-(item/min) + lines.
+   */
+  rates?: Record<string, number>;
+  rateHint?: number;
 }
 
 /** buildings: fewest machines incl. fertilizer upkeep; coins: cheapest by upstream cost model. */
@@ -81,13 +90,27 @@ export function allowedRaws(db: GameData, exclude: Set<string>): Set<string> {
 export function veganPlan(db: GameData, opts: VeganOptions = {}): VeganPlan {
   const exclude = new Set(opts.exclude ?? []);
   const raws = allowedRaws(db, exclude);
-  const combos = multiStep(db, sourcePool(db, { exclude, depth: opts.depth ?? 2 }), opts.cauldron ?? 'Cauldron');
+  const pool = sourcePool(db, { exclude, depth: opts.depth ?? 2, rawInCauldron: opts.rawInCauldron });
+  const combos = multiStep(db, pool, opts.cauldron ?? 'Cauldron');
   const lookup = recipeLookup(db, [], opts.prefer ?? [], opts.avoid ?? opts.settings?.avoidMachines ?? []);
-  const cauldron = new Map<string, Recipe>();
-  for (const [item, e] of combos) {
-    if (!e.combo || exclude.has(item) || e.combo.inputs.some(i => exclude.has(i))) continue;
-    cauldron.set(item, cauldronRecipe(db, e.combo.type, e.combo.inputs, item));
-  }
+  // Cauldron candidates per item: the multi-step search's best, plus the cheapest
+  // single-step combos over the pool and everything the search reached, so the
+  // building-count score can prefer e.g. Redcurrant x2 + Sage for Clay.
+  const cauldron = new Map<string, Recipe[]>();
+  const addCombo = (item: string, type: CauldronType, inputs: string[]) => {
+    if (exclude.has(item) || inputs.some(i => exclude.has(i))) return;
+    if (!opts.rawInCauldron && inputs.some(i => db.items[i].category === 'Raw Materials')) return;
+    const r = cauldronRecipe(db, type, inputs, item);
+    const list = cauldron.get(item) ?? [];
+    if (!list.some(x => x.id === r.id)) list.push(r);
+    cauldron.set(item, list);
+  };
+  for (const [item, e] of combos) if (e.combo) addCombo(item, e.combo.type, e.combo.inputs);
+  // Every combo straight from the pool (a few thousand), plus the cheapest few that also
+  // use cauldron-made intermediates.
+  for (const [item, list] of findCombos(db, pool, { limitPerOutput: Infinity })) for (const c of list) addCombo(item, c.type, c.inputs);
+  const wide = findCombos(db, new Set([...pool, ...combos.keys()].filter(i => !exclude.has(i))), { limitPerOutput: 12 });
+  for (const [item, list] of wide) for (const c of list) addCombo(item, c.type, c.inputs);
 
   // Score every plant-based recipe and relax until stable, so each item uses its best one.
   //  - buildings: machines per 1 item/min, including inputs' machines and the machines
@@ -105,47 +128,60 @@ export function veganPlan(db: GameData, opts: VeganOptions = {}): VeganPlan {
   for (const item of Object.keys(db.items)) {
     if (exclude.has(item) || bought.has(item)) continue;
     const list = producibleRecipes(lookup, item).filter(r => !r.generated);
-    const c = cauldron.get(item);
-    if (c) list.push(c);
+    list.push(...(cauldron.get(item) ?? []));
     if (list.length) candidatesFor.set(item, list);
   }
 
   /** One relaxation with a fixed estimate of what a fertilizer item costs. */
+  const rateOf = (item: string) => opts.rates?.[item] ?? opts.rateHint ?? 1;
   const relax = (fertEst: number) => {
+    // cost = machines per 1 item/min (buildings) or copper per item (coins);
+    // lines = production lines in the item's chain (buildings only).
     const cost = new Map<string, number>();
-    for (const r of bought) cost.set(r, goal === 'coins' ? base.get(r) ?? 0 : 0); // buying from a portal needs no production machines
+    const lines = new Map<string, number>();
+    for (const r of bought) {
+      cost.set(r, goal === 'coins' ? base.get(r) ?? 0 : 0); // buying from a portal needs no production machines
+      lines.set(r, 0);
+    }
     const chosen = new Map<string, Recipe>();
-    const recipeCost = (r: Recipe, item: string): number | null => {
+    const score = new Map<string, number>();
+    const evaluate = (r: Recipe, item: string): { cost: number; lines: number } | null => {
       let sum = 0;
+      let steps = 1;
       for (const [i, q] of Object.entries(r.inputs)) {
         const c = cost.get(i);
         if (c === undefined) return null;
         sum += c * q;
+        steps += lines.get(i) ?? 0;
       }
       const mach = db.machines[r.machine];
       if (goal === 'coins') {
         if (mach?.heatCost) sum += ((mach.heatCost > 0 ? mach.heatCost : r.heatCost ?? 0) * (r.baseTime || 1)) / HEAT_PER_COPPER; // P/s x s
         if (r.nutrientCost) sum += r.nutrientCost / NUTR_PER_COPPER;
-      } else {
-        // Machines to run 1 batch/min, plus the heating pad/furnace share under heated ones.
-        const perBatch = 1 / batchesPerMachine(db, r, settings, m);
-        const heated = !!mach?.heatCost && (mach.heatCost > 0 || (r.heatCost ?? 0) > 0);
-        sum += perBatch * (1 + (heated ? (mach!.slotsRequired ?? 1) / (db.machines[settings.heating]?.slots ?? 9) : 0));
-        // Fertilizer items per batch x machines per fertilizer item.
-        if (r.nutrientCost && fert?.nutrientValue) sum += (r.nutrientCost / (fert.nutrientValue * m.fert)) * fertEst;
+        return { cost: sum / r.outputs[item], lines: 0 };
       }
-      return sum / (r.outputs[item] * (goal === 'buildings' ? yieldMult(r, m.alchemy) : 1));
+      // Machines to run 1 batch/min, plus the heating pad/furnace share under heated ones.
+      const perBatch = 1 / batchesPerMachine(db, r, settings, m);
+      const heated = !!mach?.heatCost && (mach.heatCost > 0 || (r.heatCost ?? 0) > 0);
+      sum += perBatch * (1 + (heated ? (mach!.slotsRequired ?? 1) / (db.machines[settings.heating]?.slots ?? 9) : 0));
+      // Fertilizer items per batch x machines per fertilizer item.
+      if (r.nutrientCost && fert?.nutrientValue) sum += (r.nutrientCost / (fert.nutrientValue * m.fert)) * fertEst;
+      return { cost: sum / (r.outputs[item] * yieldMult(r, m.alchemy)), lines: steps };
     };
+    const scoreOf = (item: string, e: { cost: number; lines: number }) => (goal === 'coins' ? e.cost : rateOf(item) * e.cost + e.lines);
     for (let pass = 0; pass < 200; pass++) {
       let changed = false;
       for (const [item, list] of candidatesFor) {
         for (const r of list) {
-          const c = recipeCost(r, item);
-          if (c === null) continue;
-          const cur = cost.get(item);
+          const e = evaluate(r, item);
+          if (e === null) continue;
+          const sc = scoreOf(item, e);
+          const cur = score.get(item);
           // Default recipe (first in list) wins ties so plans don't churn.
-          if (cur === undefined || c < cur * (1 - 1e-9)) {
-            cost.set(item, c);
+          if (cur === undefined || sc < cur * (1 - 1e-9)) {
+            cost.set(item, e.cost);
+            lines.set(item, e.lines);
+            score.set(item, sc);
             chosen.set(item, r);
             changed = true;
           }

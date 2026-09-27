@@ -1,6 +1,6 @@
 import type { GameData, Recipe } from '../model/types';
 import { defaultSettings, type Settings } from '../model/settings';
-import { findLoop, recipeLookup, type Choices, type Target } from '../solver/solve';
+import { findLoop, recipeLookup, solvePlan, type Choices, type Target } from '../solver/solve';
 import type { HeatingOverrides } from '../solver/heat';
 import { recipeFromId } from '../cauldron/engine';
 import { veganPlan, type VeganGoal, type VeganPlan } from '../cauldron/vegan';
@@ -17,6 +17,8 @@ export interface PlanState {
   /** Processing steps from plant sources allowed as cauldron ingredients. */
   veganDepth: number;
   veganGoal: VeganGoal;
+  /** Allow bought raws straight into cauldrons (off: only broken-down products). */
+  veganRawInCauldron: boolean;
 }
 
 /** Off by default: World Tree (huge, fertilizer-hungry) and pricey raws (buy price in comments). */
@@ -38,18 +40,49 @@ export const defaultPlan = (): PlanState => ({
   veganExclude: [...DEFAULT_VEGAN_EXCLUDE],
   veganDepth: 2,
   veganGoal: 'buildings',
+  veganRawInCauldron: false,
 });
 
 const veganCache = new Map<string, VeganPlan>();
-export function veganFor(db: GameData, plan: PlanState): VeganPlan {
-  const opts = { exclude: [...plan.veganExclude].sort(), depth: plan.veganDepth, prefer: plan.settings.preferMachines, avoid: plan.settings.avoidMachines, goal: plan.veganGoal, settings: plan.settings };
-  const key = JSON.stringify(opts);
+function cachedVegan(db: GameData, opts: Parameters<typeof veganPlan>[1] & object): VeganPlan {
+  // Only settings that change the scoring go in the key (fuel, steam, stacks etc. don't).
+  const st = opts.settings;
+  const key = JSON.stringify({ ...opts, settings: st && { u: st.upgrades, f: st.fertilizer, h: st.heating, p: st.preferMachines, a: st.avoidMachines } });
   let v = veganCache.get(key);
   if (!v) {
-    if (veganCache.size > 20) veganCache.clear();
+    if (veganCache.size > 30) veganCache.clear();
     veganCache.set(key, (v = veganPlan(db, opts)));
   }
   return v;
+}
+
+/** 2 significant figures, so small rate changes reuse the cached vegan plan. */
+const round2 = (x: number) => (x > 0 ? Number(x.toPrecision(2)) : 0);
+
+/**
+ * Vegan picks for this plan. Two passes: score with the target rate, solve, then
+ * re-score each item at the rate that plan actually needs it (Plank for relics runs
+ * far above the 0.1/min target), so line-count vs throughput is judged per item.
+ */
+export function veganFor(db: GameData, plan: PlanState): VeganPlan {
+  const base = {
+    exclude: [...plan.veganExclude].sort(),
+    depth: plan.veganDepth,
+    prefer: plan.settings.preferMachines,
+    avoid: plan.settings.avoidMachines,
+    goal: plan.veganGoal,
+    rawInCauldron: plan.veganRawInCauldron,
+    settings: plan.settings,
+  };
+  const targets = plan.targets.filter(t => t.rate > 0);
+  const rateHint = round2(targets.reduce((a, t) => a + t.rate, 0) || 1);
+  const first = cachedVegan(db, { ...base, rateHint });
+  if (plan.veganGoal !== 'buildings' || !targets.length) return first;
+  const r = solvePlan(db, { targets, choices: { ...first.choices, ...plan.choices }, extraRecipes: first.recipes, settings: plan.settings });
+  if (r.status !== 'optimal') return first;
+  const rates: Record<string, number> = {};
+  for (const l of r.lines) for (const [item, q] of Object.entries(l.outputs)) rates[item] = round2((rates[item] ?? 0) + q);
+  return cachedVegan(db, { ...base, rateHint, rates });
 }
 
 /** Choices + generated recipes the solver should use for this plan. */
@@ -177,6 +210,7 @@ export function sanitize(db: GameData, raw: unknown): PlanState | null {
     ],
     veganDepth: Math.min(4, Math.max(0, Math.floor(v1 && (r.veganDepth ?? 1) === 1 ? 2 : num(r.veganDepth, 2)))),
     veganGoal: r.veganGoal === 'coins' ? 'coins' : 'buildings',
+    veganRawInCauldron: r.veganRawInCauldron === true,
   };
 }
 

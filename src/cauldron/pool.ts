@@ -21,7 +21,7 @@ export const allSources = (db: GameData) => [...grownSources(db), ...boughtSourc
  * Like upstream's 🌿 preset, Seed Plot and cauldron recipes don't count as processing.
  * Excluded items are never added and can't be used as inputs.
  */
-export function sourcePool(db: GameData, opts: { exclude?: Iterable<string>; depth?: number } = {}): Set<string> {
+export function sourcePool(db: GameData, opts: { exclude?: Iterable<string>; depth?: number; rawInCauldron?: boolean } = {}): Set<string> {
   const exclude = new Set(opts.exclude ?? []);
   const reached = new Set(allSources(db).filter(n => !exclude.has(n)));
   for (let step = 0; step < (opts.depth ?? 2); step++) {
@@ -35,7 +35,9 @@ export function sourcePool(db: GameData, opts: { exclude?: Iterable<string>; dep
     if (!fresh.length) break;
     for (const o of fresh) reached.add(o);
   }
-  return new Set([...reached].filter(n => isCandidate(db, n)));
+  // Bought raws go into the pool's processing steps, but by default not straight into a
+  // cauldron: a whole purchased unit per slot is expensive, broken-down items are cheap.
+  return new Set([...reached].filter(n => isCandidate(db, n) && (opts.rawInCauldron || db.items[n].category !== 'Raw Materials')));
 }
 
 export function allPool(db: GameData): Set<string> {

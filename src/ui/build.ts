@@ -68,6 +68,7 @@ export function renderBuild(app: App, root: HTMLElement): void {
 
   const totalTiles = zones.reduce((a, z) => a + footprint(app, z.machine!, z.machines).tiles, 0);
   root.replaceChildren(
+    renderStarter(app),
     h(
       'p',
       { class: 'muted small' },
@@ -84,5 +85,50 @@ export function renderBuild(app: App, root: HTMLElement): void {
       ),
     ),
     h('p', { class: 'muted small' }, `Machine floor space (excluding heating devices and belts): ${totalTiles} tiles.`),
+  );
+}
+
+/**
+ * Starter build: machine counts scale linearly with the target rate, so with one machine
+ * per line you'd make (goal x smallest 1/machines-needed). Lists the lines to scale first.
+ */
+function renderStarter(app: App): HTMLElement {
+  const { result, plan } = app;
+  const lines = [...result.lines].sort((a, b) => b.machines - a.machines);
+  const worst = lines[0]?.machines ?? 0;
+  if (!lines.length || worst <= 0) return h('div');
+  const fraction = Math.min(1, 1 / worst);
+  const heavy = lines.filter(l => l.machinesCeil > 1);
+  const targets = plan.targets.filter(t => t.rate > 0);
+  const rateText = targets.map(t => `${fmt(t.rate * fraction, 3)}/min ${t.item}`).join(', ');
+  return h(
+    'div',
+    { class: 'panel starter' },
+    h('h2', {}, 'Starter build: one machine per line'),
+    fraction >= 1
+      ? h('p', {}, `One machine per line already covers your goal (${targets.map(t => `${fmt(t.rate, 3)}/min ${t.item}`).join(', ')}).`)
+      : h(
+          'p',
+          {},
+          `With one of each (${lines.length} machines) you'd make `,
+          h('strong', {}, rateText),
+          ` — ${fmt(fraction * 100, 1)}% of your goal. To reach the goal, scale these ${heavy.length} lines (the other ${lines.length - heavy.length} are fine with one):`,
+        ),
+    heavy.length
+      ? h(
+          'ol',
+          { class: 'starter-list' },
+          ...heavy.slice(0, 12).map(l =>
+            h(
+              'li',
+              {},
+              h('button', { class: 'link', onclick: () => app.openPicker(l.items[0] ?? Object.keys(l.outputs)[0]) }, l.items.join(' + ')),
+              h('span', { class: 'muted' }, ` · ${l.recipe.machine} ×${l.machinesCeil}`),
+              h('span', { class: 'muted small' }, ` (1 alone = ${fmt(Math.min(100, 100 / l.machines), 1)}%)`),
+            ),
+          ),
+          heavy.length > 12 ? h('li', { class: 'muted' }, `…and ${heavy.length - 12} more`) : null,
+        )
+      : null,
   );
 }

@@ -13,11 +13,11 @@ let poolKind: PoolKind = 'herb';
 /** Combos from the plant pool (per the plan's vegan settings) or from every item. */
 function combos(app: App, kind: PoolKind): Map<string, Combo[]> {
   const { db, plan } = app;
-  const key = kind === 'all' ? 'all' : JSON.stringify([[...plan.veganExclude].sort(), plan.veganDepth]);
+  const key = kind === 'all' ? 'all' : JSON.stringify([[...plan.veganExclude].sort(), plan.veganDepth, plan.veganRawInCauldron]);
   let c = comboCache.get(key);
   if (!c) {
     if (comboCache.size > 10) comboCache.clear();
-    const pool = kind === 'all' ? allPool(db) : sourcePool(db, { exclude: plan.veganExclude, depth: plan.veganDepth });
+    const pool = kind === 'all' ? allPool(db) : sourcePool(db, { exclude: plan.veganExclude, depth: plan.veganDepth, rawInCauldron: plan.veganRawInCauldron });
     comboCache.set(key, (c = findCombos(db, pool)));
   }
   return c;

@@ -40,7 +40,7 @@ describe('cauldron engine', () => {
 describe('herb pool and vegan mode', () => {
   it('source pool = grown + bought sources + N processing steps', () => {
     const pool = sourcePool(db, { depth: 1, exclude: ['Meteorite'] }); // Meteorite Processing yields Iron Sand in 1 step
-    for (const n of ['Flax', 'Sage', 'Gentian', 'World Tree Core', 'Flax Fiber', 'Plant Ash', 'Oblivion Essence', 'Logs', 'Plank', 'Iron Ore', 'Iron Ingot']) expect(pool.has(n), n).toBe(true);
+    for (const n of ['Flax', 'Sage', 'Gentian', 'World Tree Core', 'Flax Fiber', 'Plant Ash', 'Oblivion Essence', 'Plank', 'Iron Ingot']) expect(pool.has(n), n).toBe(true);
     expect(pool.has('Iron Sand')).toBe(false); // ore -> ingot -> sand is 2 steps
     const two = sourcePool(db); // default depth 2
     for (const n of ['Iron Sand', 'Large Wooden Gear', 'Linen Thread']) expect(two.has(n), n).toBe(true);
@@ -85,7 +85,9 @@ describe('herb pool and vegan mode', () => {
   it('without logs, wood items are not vegan', () => {
     const v = veganPlan(db, { exclude: ['Logs', 'Rotten Log'] });
     expect(v.allowedRaws.has('Logs')).toBe(false);
-    expect(v.vegan.has('Plank')).toBe(false);
+    // Plank may still come from a cauldron combo, but nothing buys Logs.
+    const r = solvePlan(db, { targets: [{ item: 'Plank', rate: 10 }], choices: v.choices, extraRecipes: v.recipes, settings: defaultSettings() });
+    expect(r.raw.Logs ?? 0).toBe(0);
   });
 });
 
@@ -117,5 +119,31 @@ describe('vegan coverage', () => {
     const r = solvePlan(db, { targets: [{ item: 'Star Dust', rate: 0.5 }], choices: v.choices, extraRecipes: v.recipes, settings: defaultSettings() });
     expect(r.status).toBe('optimal');
     for (const raw of Object.keys(r.raw)) expect(v.allowedRaws.has(raw), raw).toBe(true);
+  });
+});
+
+describe('bought raws in cauldrons', () => {
+  it('are kept out of the pool by default, their products stay in', () => {
+    const pool = sourcePool(db, { exclude: ['Meteorite'] });
+    for (const raw of ['Logs', 'Iron Ore', 'Rock Salt']) expect(pool.has(raw), raw).toBe(false);
+    for (const p of ['Plank', 'Iron Ingot', 'Iron Sand', 'Flax']) expect(pool.has(p), p).toBe(true);
+    expect(sourcePool(db, { rawInCauldron: true }).has('Logs')).toBe(true);
+  });
+  it('vegan cauldron picks never take a bought raw directly', () => {
+    const v = veganPlan(db, { exclude: ['World Tree Leaf', 'World Tree Core', 'Meteorite'], settings: defaultSettings() });
+    for (const r of v.recipes) for (const i of Object.keys(r.inputs)) expect(db.items[i].category, `${r.id}`).not.toBe('Raw Materials');
+  });
+});
+
+describe('low-rate plans prefer fewer lines', () => {
+  it("at 0.1/min Clay uses a short herb cauldron recipe (the owners' Redcurrant x2 + Sage style)", async () => {
+    const { defaultPlan, effectiveChoices } = await import('../src/state/plan');
+    const plan = defaultPlan();
+    plan.targets = [{ item: 'Clay', rate: 0.1 }];
+    plan.vegan = true;
+    const e = effectiveChoices(db, plan);
+    const r = solvePlan(db, { targets: plan.targets, choices: e.choices, extraRecipes: e.extraRecipes, settings: plan.settings });
+    expect(r.status).toBe('optimal');
+    expect(r.lines.length).toBeLessThanOrEqual(3);
   });
 });
