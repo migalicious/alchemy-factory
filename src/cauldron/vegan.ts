@@ -1,7 +1,7 @@
 import type { GameData, Recipe } from '../model/types';
 import { YIELD_MULTIPLIER_MACHINES } from '../model/multipliers';
 import { cauldronRecipe, type CauldronType } from './engine';
-import { plantPool } from './pool';
+import { sourcePool } from './pool';
 import { multiStep } from './search';
 import { buildItemBaseCost } from './cost';
 import { batchesPerMachine, producibleRecipes, recipeLookup } from '../solver/solve';
@@ -18,8 +18,6 @@ export interface VeganOptions {
   avoid?: readonly string[];
   /** What "best" means when several plant-based recipes exist. */
   goal?: VeganGoal;
-  /** plants: only plant raws; any: ores etc. from Purchasing Portals are allowed too. */
-  ingredients?: 'plants' | 'any';
   /** Plan settings (speeds, fertilizer) used to count buildings. */
   settings?: Settings;
 }
@@ -34,8 +32,8 @@ export interface VeganPlan {
   recipes: Recipe[];
   /** Everything makeable from the enabled plant sources. */
   vegan: Set<string>;
-  /** Plant raw inputs (seeds, and logs if enabled). */
-  plantRaws: Set<string>;
+  /** Raw inputs you allow buying from Purchasing Portals (not excluded). */
+  allowedRaws: Set<string>;
   exclude: Set<string>;
   /** Score per item along the chosen recipes: machines per item/min, or copper per item. */
   cost: Map<string, number>;
@@ -69,23 +67,21 @@ function breakCycles(chosen: Map<string, Recipe>): void {
   for (const item of [...chosen.keys()]) visit(item);
 }
 
-export function plantRaws(db: GameData, exclude: Set<string>): Set<string> {
-  const raws = Object.keys(db.items).filter(n => db.items[n].category === 'Raw Materials' && /Seeds?$/.test(n));
-  raws.push('Logs', 'Rotten Log');
-  return new Set(raws.filter(n => db.items[n] && !exclude.has(n)));
+export function allowedRaws(db: GameData, exclude: Set<string>): Set<string> {
+  return new Set(Object.keys(db.items).filter(n => db.items[n].category === 'Raw Materials' && !exclude.has(n)));
 }
 
 /**
- * 🌿 Vegan mode: pick recipes so that as much as possible is made from plants.
- * Sources = seeds (grown in Nursery/Seed Plot), enabled herbs, and logs if enabled.
+ * 🌿 Vegan mode: pick recipes from the sources you allow: herbs grown in Nurseries
+ * and the raw materials you're happy to buy (cheap ores yes, Quartz/Meteorite no).
  * Producers = DB recipes + cauldron combos found by the upstream-style multi-step
  * search over the plant pool. Each item gets its cheapest plant-based recipe by
  * estimated copper cost (ties go to the default recipe).
  */
 export function veganPlan(db: GameData, opts: VeganOptions = {}): VeganPlan {
   const exclude = new Set(opts.exclude ?? []);
-  const raws = plantRaws(db, exclude);
-  const combos = multiStep(db, plantPool(db, { exclude, depth: opts.depth ?? 1 }), opts.cauldron ?? 'Cauldron');
+  const raws = allowedRaws(db, exclude);
+  const combos = multiStep(db, sourcePool(db, { exclude, depth: opts.depth ?? 2 }), opts.cauldron ?? 'Cauldron');
   const lookup = recipeLookup(db, [], opts.prefer ?? [], opts.avoid ?? opts.settings?.avoidMachines ?? []);
   const cauldron = new Map<string, Recipe>();
   for (const [item, e] of combos) {
@@ -103,11 +99,7 @@ export function veganPlan(db: GameData, opts: VeganOptions = {}): VeganPlan {
   const m = mults(settings);
   const fert = db.items[settings.fertilizer];
   const base = buildItemBaseCost(db);
-  // Raw inputs bought from Purchasing Portals: plants only, or any raw material.
-  const bought = new Set(raws);
-  if (opts.ingredients === 'any') {
-    for (const [n, it] of Object.entries(db.items)) if (it.category === 'Raw Materials' && !exclude.has(n)) bought.add(n);
-  }
+  const bought = raws; // bought from Purchasing Portals
 
   const candidatesFor = new Map<string, Recipe[]>();
   for (const item of Object.keys(db.items)) {
@@ -135,7 +127,10 @@ export function veganPlan(db: GameData, opts: VeganOptions = {}): VeganPlan {
         if (mach?.heatCost) sum += ((mach.heatCost > 0 ? mach.heatCost : r.heatCost ?? 0) * (r.baseTime || 1)) / HEAT_PER_COPPER; // P/s x s
         if (r.nutrientCost) sum += r.nutrientCost / NUTR_PER_COPPER;
       } else {
-        sum += 1 / batchesPerMachine(db, r, settings, m); // machines to run 1 batch/min
+        // Machines to run 1 batch/min, plus the heating pad/furnace share under heated ones.
+        const perBatch = 1 / batchesPerMachine(db, r, settings, m);
+        const heated = !!mach?.heatCost && (mach.heatCost > 0 || (r.heatCost ?? 0) > 0);
+        sum += perBatch * (1 + (heated ? (mach!.slotsRequired ?? 1) / (db.machines[settings.heating]?.slots ?? 9) : 0));
         // Fertilizer items per batch x machines per fertilizer item.
         if (r.nutrientCost && fert?.nutrientValue) sum += (r.nutrientCost / (fert.nutrientValue * m.fert)) * fertEst;
       }
@@ -180,5 +175,5 @@ export function veganPlan(db: GameData, opts: VeganOptions = {}): VeganPlan {
     choices[item] = r.id;
     if (r.generated) recipes.push(r);
   }
-  return { choices, recipes, vegan, plantRaws: raws, exclude, cost };
+  return { choices, recipes, vegan, allowedRaws: raws, exclude, cost };
 }

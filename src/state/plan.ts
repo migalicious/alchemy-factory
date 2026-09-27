@@ -17,11 +17,14 @@ export interface PlanState {
   /** Processing steps from plant sources allowed as cauldron ingredients. */
   veganDepth: number;
   veganGoal: VeganGoal;
-  /** plants: only plant raws; any: ores etc. from Purchasing Portals too. */
-  veganIngredients: 'plants' | 'any';
 }
 
-export const DEFAULT_VEGAN_EXCLUDE = ['World Tree Leaf', 'World Tree Core'];
+/** Off by default: World Tree (huge, fertilizer-hungry) and pricey raws (buy price in comments). */
+export const EXPENSIVE_RAWS = ['Pyrite Ore' /* 11k */, 'Quartz Ore' /* 44k */, 'Meteorite' /* 2M */];
+export const DEFAULT_VEGAN_EXCLUDE = ['World Tree Leaf', 'World Tree Core', ...EXPENSIVE_RAWS];
+
+/** Bumped when saved-plan meaning changes; see sanitize() migrations. */
+const PLAN_VERSION = 2;
 
 /** Research levels the planner opens with (the owner's current game, 2026-09-27). */
 export const DEFAULT_UPGRADES = { logistics: 6, factory: 6, alchemy: 2, fuel: 4, fert: 9 };
@@ -33,14 +36,13 @@ export const defaultPlan = (): PlanState => ({
   settings: { ...defaultSettings(), upgrades: { ...DEFAULT_UPGRADES } },
   vegan: false,
   veganExclude: [...DEFAULT_VEGAN_EXCLUDE],
-  veganDepth: 1,
+  veganDepth: 2,
   veganGoal: 'buildings',
-  veganIngredients: 'plants',
 });
 
 const veganCache = new Map<string, VeganPlan>();
 export function veganFor(db: GameData, plan: PlanState): VeganPlan {
-  const opts = { exclude: [...plan.veganExclude].sort(), depth: plan.veganDepth, prefer: plan.settings.preferMachines, avoid: plan.settings.avoidMachines, goal: plan.veganGoal, ingredients: plan.veganIngredients, settings: plan.settings };
+  const opts = { exclude: [...plan.veganExclude].sort(), depth: plan.veganDepth, prefer: plan.settings.preferMachines, avoid: plan.settings.avoidMachines, goal: plan.veganGoal, settings: plan.settings };
   const key = JSON.stringify(opts);
   let v = veganCache.get(key);
   if (!v) {
@@ -106,7 +108,7 @@ function fromBase64Url(s: string): string {
 }
 
 export function encodePlan(plan: PlanState): string {
-  return toBase64Url(JSON.stringify({ v: 1, ...plan }));
+  return toBase64Url(JSON.stringify({ v: PLAN_VERSION, ...plan }));
 }
 
 /** Parse and sanitise a plan; unknown items/fields are dropped. Returns null if unusable. */
@@ -121,7 +123,9 @@ export function decodePlan(db: GameData, encoded: string): PlanState | null {
 
 export function sanitize(db: GameData, raw: unknown): PlanState | null {
   if (!raw || typeof raw !== 'object') return null;
-  const r = raw as Partial<PlanState> & { veganLogs?: boolean };
+  const r = raw as Partial<PlanState> & { veganLogs?: boolean; v?: number };
+  // v1 plans predate bought-ore sources: keep pricey raws off and use the new 2-step default.
+  const v1 = (r.v ?? 1) < 2;
   const base = defaultPlan();
   const num = (v: unknown, d: number) => (typeof v === 'number' && isFinite(v) && v >= 0 ? v : d);
   const s = (r.settings ?? {}) as Partial<Settings>;
@@ -162,13 +166,17 @@ export function sanitize(db: GameData, raw: unknown): PlanState | null {
           : base.settings.stacks,
     },
     vegan: !!r.vegan,
-    veganExclude: Array.isArray(r.veganExclude)
-      ? r.veganExclude.filter(i => typeof i === 'string' && db.items[i])
-      : // links from before per-source options: veganLogs=false meant "no logs"
-        [...DEFAULT_VEGAN_EXCLUDE, ...(r.veganLogs === false ? ['Logs', 'Rotten Log'] : [])],
-    veganDepth: Math.min(4, Math.max(0, Math.floor(num(r.veganDepth, 1)))),
+    veganExclude: [
+      ...new Set([
+        ...(Array.isArray(r.veganExclude)
+          ? r.veganExclude.filter(i => typeof i === 'string' && db.items[i])
+          : // links from before per-source options: veganLogs=false meant "no logs"
+            [...DEFAULT_VEGAN_EXCLUDE, ...(r.veganLogs === false ? ['Logs', 'Rotten Log'] : [])]),
+        ...(v1 ? EXPENSIVE_RAWS : []),
+      ]),
+    ],
+    veganDepth: Math.min(4, Math.max(0, Math.floor(v1 && (r.veganDepth ?? 1) === 1 ? 2 : num(r.veganDepth, 2)))),
     veganGoal: r.veganGoal === 'coins' ? 'coins' : 'buildings',
-    veganIngredients: r.veganIngredients === 'any' ? 'any' : 'plants',
   };
 }
 
@@ -176,7 +184,7 @@ const STORAGE_KEY = 'af-planner:last-plan';
 
 export function saveLocal(plan: PlanState): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(plan));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ v: PLAN_VERSION, ...plan }));
   } catch {
     /* storage unavailable (private mode etc.) */
   }

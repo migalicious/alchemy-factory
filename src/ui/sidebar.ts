@@ -2,7 +2,7 @@ import type { App } from './app';
 import { fmt, h } from './dom';
 import type { HeatingDevice } from '../model/types';
 import { STEAM_BOILER_SLOTS } from '../data/overrides';
-import { plantSources } from '../cauldron/pool';
+import { boughtSources, grownSources } from '../cauldron/pool';
 import { DEFAULT_VEGAN_EXCLUDE } from '../state/plan';
 
 const DEVICES: HeatingDevice[] = ['Steam Heating Pad', 'Stone Furnace', 'Blast Furnace'];
@@ -137,11 +137,11 @@ function renderSummary(app: App): HTMLElement {
   for (const l of result.lines) machineCounts.set(l.recipe.machine, (machineCounts.get(l.recipe.machine) ?? 0) + l.machinesCeil);
   for (const [d, n] of Object.entries(heat.devices)) if (n) machineCounts.set(d, (machineCounts.get(d) ?? 0) + n);
 
-  const plantRaws = eff.vegan?.plantRaws;
+  const allowed = eff.vegan?.allowedRaws;
   const rawRows = Object.entries(result.raw)
     .sort((a, b) => b[1] - a[1])
     .map(([item, rate]) => {
-      const badge = plantRaws ? (plantRaws.has(item) ? h('span', { class: 'badge ok', title: 'Plant source' }, '🌿') : h('span', { class: 'badge warn', title: 'Not from plants' }, '⛏')) : null;
+      const badge = allowed && !allowed.has(item) ? h('span', { class: 'badge warn', title: "Not in your vegan sources, but nothing else can make what's needed" }, '⚠ not allowed') : null;
       return h(
         'li',
         {},
@@ -197,7 +197,23 @@ function renderSummary(app: App): HTMLElement {
 
 function renderVeganPanel(app: App): HTMLElement {
   const { db, plan, eff } = app;
-  const sources = plantSources(db);
+  const grown = grownSources(db);
+  const bought = boughtSources(db).sort((a, b) => (db.items[a].buyPrice ?? 0) - (db.items[b].buyPrice ?? 0));
+  const sources = [...grown, ...bought];
+  const price = (n: number) => (n >= 1e6 ? `${n / 1e6}M` : n >= 1e3 ? `${n / 1e3}k` : `${n}`);
+  const checks = (items: string[], label: (i: string) => string) =>
+    h(
+      'div',
+      { class: 'checks' },
+      ...items.map(src =>
+        h(
+          'label',
+          { class: 'toggle' },
+          h('input', { type: 'checkbox', checked: !excluded.has(src), onchange: (e: Event) => toggle(src, (e.target as HTMLInputElement).checked) }),
+          h('span', {}, label(src)),
+        ),
+      ),
+    );
   const excluded = new Set(plan.veganExclude);
   const toggle = (item: string, on: boolean) =>
     app.update(p => {
@@ -216,7 +232,7 @@ function renderVeganPanel(app: App): HTMLElement {
     'div',
     { class: 'panel vegan-panel' },
     h('strong', {}, '🌿 Vegan mode on'),
-    h('p', { class: 'muted' }, `Recipes are auto-picked so items come from the plants you allow, using normal recipes and cauldron combos. Your own picks still win. ${reached} items reachable.`),
+    h('p', { class: 'muted' }, `Recipes are auto-picked to use only the sources you tick below, through normal recipes and cauldron combos. Your own picks still win. ${reached} items reachable.`),
     h(
       'label',
       { class: 'field', title: 'When several plant-based recipes exist, which one to use' },
@@ -228,34 +244,14 @@ function renderVeganPanel(app: App): HTMLElement {
         h('option', { value: 'coins', selected: plan.veganGoal === 'coins' }, 'Cheapest (coins)'),
       ),
     ),
+    h('h3', {}, 'Grown (Nursery)'),
+    checks(grown, i => i),
+    h('h3', {}, 'Bought (Purchasing Portal)'),
+    checks(bought, i => `${i} · ${price(db.items[i].buyPrice ?? 0)}`),
     h(
       'label',
-      { class: 'field', title: 'Plants only, or also let it buy ores from Purchasing Portals when that means fewer buildings' },
-      h('span', {}, 'Ingredients'),
-      h(
-        'select',
-        { onchange: (e: Event) => app.update(p => (p.veganIngredients = (e.target as HTMLSelectElement).value as 'plants' | 'any')) },
-        h('option', { value: 'plants', selected: plan.veganIngredients === 'plants' }, 'Plants only'),
-        h('option', { value: 'any', selected: plan.veganIngredients === 'any' }, 'Plants + bought ores'),
-      ),
-    ),
-    h('h3', {}, 'Plant sources'),
-    h(
-      'div',
-      { class: 'checks' },
-      ...sources.map(src =>
-        h(
-          'label',
-          { class: 'toggle' },
-          h('input', { type: 'checkbox', checked: !excluded.has(src), onchange: (e: Event) => toggle(src, (e.target as HTMLInputElement).checked) }),
-          h('span', {}, src),
-        ),
-      ),
-    ),
-    h(
-      'label',
-      { class: 'field', title: 'How many processing steps from a plant source still count as a cauldron ingredient (Logs → Plank is 1 step)' },
-      h('span', {}, 'Cauldron ingredients: steps from plants'),
+      { class: 'field', title: 'How many processing steps from a source still count as a cauldron ingredient. Iron Ore → Iron Ingot → Iron Sand and Logs → Plank → Large Wooden Gear are 2 steps.' },
+      h('span', {}, 'Cauldron ingredients: steps from sources'),
       h('input', {
         type: 'number',
         min: 0,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { loadGameData } from '../src/data/adapter';
 import { cauldronRecipe, cauldronStats, cauldronTargets, recipeFromId, resolve3 } from '../src/cauldron/engine';
-import { plantPool, plantSources } from '../src/cauldron/pool';
+import { sourcePool, grownSources, boughtSources } from '../src/cauldron/pool';
 import { findCombos } from '../src/cauldron/search';
 import { veganPlan } from '../src/cauldron/vegan';
 import { defaultSettings } from '../src/model/settings';
@@ -38,20 +38,22 @@ describe('cauldron engine', () => {
 });
 
 describe('herb pool and vegan mode', () => {
-  it('plant pool = plant sources + N processing steps', () => {
-    const pool = plantPool(db);
-    for (const n of ['Flax', 'Sage', 'Gentian', 'World Tree Core', 'Flax Fiber', 'Plant Ash', 'Oblivion Essence', 'Logs', 'Plank']) expect(pool.has(n), n).toBe(true);
-    expect(pool.has('Iron Ore')).toBe(false);
-    expect(pool.has('Linen Thread')).toBe(false); // two steps from Flax
-    expect(plantPool(db, { depth: 2 }).has('Linen Thread')).toBe(true);
-    expect(plantPool(db, { depth: 0 }).has('Plank')).toBe(false);
+  it('source pool = grown + bought sources + N processing steps', () => {
+    const pool = sourcePool(db, { depth: 1, exclude: ['Meteorite'] }); // Meteorite Processing yields Iron Sand in 1 step
+    for (const n of ['Flax', 'Sage', 'Gentian', 'World Tree Core', 'Flax Fiber', 'Plant Ash', 'Oblivion Essence', 'Logs', 'Plank', 'Iron Ore', 'Iron Ingot']) expect(pool.has(n), n).toBe(true);
+    expect(pool.has('Iron Sand')).toBe(false); // ore -> ingot -> sand is 2 steps
+    const two = sourcePool(db); // default depth 2
+    for (const n of ['Iron Sand', 'Large Wooden Gear', 'Linen Thread']) expect(two.has(n), n).toBe(true);
+    expect(sourcePool(db, { depth: 0 }).has('Plank')).toBe(false);
   });
 
   it('excluded sources and their products stay out of the pool', () => {
-    const pool = plantPool(db, { exclude: ['World Tree Leaf', 'World Tree Core', 'Logs'] });
+    const pool = sourcePool(db, { exclude: ['World Tree Leaf', 'World Tree Core', 'Quartz Ore'] });
     expect(pool.has('World Tree Core')).toBe(false);
-    expect(pool.has('Plank')).toBe(pool.has('Rotten Log')); // Plank now only via Rotten Log
-    expect(plantSources(db)).toContain('World Tree Leaf');
+    expect(pool.has('Quartz Ore')).toBe(false);
+    expect(grownSources(db)).toContain('World Tree Leaf');
+    expect(boughtSources(db)).toContain('Iron Ore');
+    expect(boughtSources(db)).not.toContain('Flax Seeds');
   });
 
   it('vegan mode never uses excluded items in its own picks', () => {
@@ -65,16 +67,16 @@ describe('herb pool and vegan mode', () => {
     const v = veganPlan(db);
     const r = solvePlan(db, { targets: [{ item: 'Philosopherˈs Stone', rate: 1 }], choices: v.choices, extraRecipes: v.recipes, settings: defaultSettings() });
     expect(r.status).toBe('optimal');
-    for (const raw of Object.keys(r.raw)) expect(v.plantRaws.has(raw), raw).toBe(true);
+    for (const raw of Object.keys(r.raw)) expect(v.allowedRaws.has(raw), raw).toBe(true);
   });
 
   it('every vegan-reachable item solves using only plant raws', () => {
     const v = veganPlan(db);
     const bad: string[] = [];
     for (const item of v.vegan) {
-      if (v.plantRaws.has(item)) continue;
+      if (v.allowedRaws.has(item)) continue;
       const r = solvePlan(db, { targets: [{ item, rate: 1 }], choices: v.choices, extraRecipes: v.recipes, settings: defaultSettings() });
-      const nonPlant = Object.keys(r.raw).filter(k => !v.plantRaws.has(k));
+      const nonPlant = Object.keys(r.raw).filter(k => !v.allowedRaws.has(k));
       if (r.status !== 'optimal' || nonPlant.length) bad.push(`${item}: ${r.status} ${nonPlant.join(',')}`);
     }
     expect(bad).toEqual([]);
@@ -82,7 +84,7 @@ describe('herb pool and vegan mode', () => {
 
   it('without logs, wood items are not vegan', () => {
     const v = veganPlan(db, { exclude: ['Logs', 'Rotten Log'] });
-    expect(v.plantRaws.has('Logs')).toBe(false);
+    expect(v.allowedRaws.has('Logs')).toBe(false);
     expect(v.vegan.has('Plank')).toBe(false);
   });
 });
@@ -114,6 +116,6 @@ describe('vegan coverage', () => {
     const v = veganPlan(db, { exclude: ['World Tree Leaf', 'World Tree Core'], settings: defaultSettings() });
     const r = solvePlan(db, { targets: [{ item: 'Star Dust', rate: 0.5 }], choices: v.choices, extraRecipes: v.recipes, settings: defaultSettings() });
     expect(r.status).toBe('optimal');
-    for (const raw of Object.keys(r.raw)) expect(v.plantRaws.has(raw), raw).toBe(true);
+    for (const raw of Object.keys(r.raw)) expect(v.allowedRaws.has(raw), raw).toBe(true);
   });
 });

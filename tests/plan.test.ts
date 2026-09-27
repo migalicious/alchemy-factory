@@ -17,7 +17,14 @@ describe('plan state', () => {
 
   it('migrates old links: veganLogs=false excludes logs', () => {
     const old = btoa(JSON.stringify({ targets: [], vegan: true, veganLogs: false }));
-    expect(decodePlan(db, old)?.veganExclude).toEqual(['World Tree Leaf', 'World Tree Core', 'Logs', 'Rotten Log']);
+    expect(decodePlan(db, old)?.veganExclude).toEqual(['World Tree Leaf', 'World Tree Core', 'Pyrite Ore', 'Quartz Ore', 'Meteorite', 'Logs', 'Rotten Log']);
+  });
+
+  it('migrates v1 plans: pricey raws off, 2 processing steps', () => {
+    const old = btoa(JSON.stringify({ v: 1, targets: [], vegan: true, veganExclude: ['World Tree Core'], veganDepth: 1 }));
+    const p = decodePlan(db, old)!;
+    expect(p.veganExclude).toEqual(['World Tree Core', 'Pyrite Ore', 'Quartz Ore', 'Meteorite']);
+    expect(p.veganDepth).toBe(2);
   });
 
   it('drops garbage', () => {
@@ -44,6 +51,7 @@ describe('user picks that loop with vegan picks', () => {
     const p = defaultPlan();
     p.vegan = true;
     p.targets = [{ item: 'Star Dust', rate: 0.5 }];
+    p.veganExclude = [...p.veganExclude, 'Iron Ore']; // so vegan makes Iron Ingot from Iron Sand
     p.choices = { 'Iron Sand': 'Iron Sand (Enhanced)' };
     const e = effectiveChoices(db, p);
     expect(e.dropped).toContain('Iron Ingot');

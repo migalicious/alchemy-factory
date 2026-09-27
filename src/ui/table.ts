@@ -89,7 +89,7 @@ export function renderTable(app: App, root: HTMLElement): void {
         eff.vegan && line.items.some(i => eff.vegan!.exclude.has(i))
           ? h('span', { class: 'badge warn', title: 'You asked to avoid this, but nothing else can make what this chain needs. Pick another recipe for the item that consumes it.' }, '⚠ avoided')
           : eff.vegan && !line.items.some(i => eff.vegan!.vegan.has(i))
-            ? h('span', { class: 'badge warn', title: 'Not makeable from your allowed plants' }, '⛏ not plant')
+            ? h('span', { class: 'badge warn', title: "Can't be made from your ticked sources, so it uses its normal recipe" }, '⚠ outside sources')
             : null,
       ),
       h('td', { class: 'num' }, h('strong', {}, `${line.machinesCeil}`), h('span', { class: 'muted small' }, ` (${fmt(line.machines)})`)),
