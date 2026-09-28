@@ -36,7 +36,7 @@ Plans live in the URL hash, so a link can be shared; the last plan is also kept 
 
 ## Ideas not done (ask before building)
 
-- Show the coin cost per minute of bought raws next to the building count, since the owner watches ore spend (Quartz etc.).
+- A "coins" weight in the fewest-buildings score, so pricey raws like Rock Salt (9k per purchase) lose to cheaper routes. Today coin cost is only *shown*, in the sidebar and on the graph's Purchasing Portal box.
 - A per-item "lock": keep an automatic pick fixed when settings change.
 - Refresh the vendored DB when upstream updates (instructions in `src/data/SOURCE.md`), then rerun the tests.
 - Graph readability for very large plans is still limited. The Build tab lists and the Starter panel are the most usable views there.

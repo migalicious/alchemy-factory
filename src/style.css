@@ -222,3 +222,4 @@ button.option.selected { border-color: var(--accent); background: var(--accent-s
 .starter-list li { break-inside: avoid; padding: 1px 0; }
 .recipe-filter { width: 100%; margin-bottom: 6px; }
 button.option[hidden] { display: none; }
+.num.coins { min-width: 64px; color: var(--warn); }

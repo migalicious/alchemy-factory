@@ -4,6 +4,7 @@ import { fmt, h } from './dom';
 import { recipeLabel } from './describe';
 import { short } from './table';
 import { buildZones, footprint, zoneFlows } from './zones';
+import { fmtCoins, rawCoinCost } from '../solver/coins';
 
 const SVG = 'http://www.w3.org/2000/svg';
 
@@ -80,7 +81,16 @@ function zoneGraph(app: App): { nodes: GNode[]; edges: GEdge[] } {
     });
   }
   const raws = Object.keys(result.raw);
-  if (raws.length) nodes.push({ id: 'raw', kind: 'raw', lines: ['🛒 Purchasing Portal', listClip(raws), `${raws.length} item${raws.length === 1 ? '' : 's'} bought in`], tip: itemList(new Map(Object.entries(result.raw))).join('\n') });
+  const coins = rawCoinCost(app.db, result.raw);
+  if (raws.length)
+    nodes.push({
+      id: 'raw',
+      kind: 'raw',
+      lines: ['🛒 Purchasing Portal', listClip(raws), `${raws.length} item${raws.length === 1 ? '' : 's'} · ${fmtCoins(coins.total)} 🪙/min`],
+      tip: Object.entries(result.raw)
+        .map(([i, r]) => `${fmt(r)} ${i}/min${coins.perItem[i] !== null ? ` · ${fmtCoins(coins.perItem[i]!)} coins/min` : ''}`)
+        .join('\n'),
+    });
   const targets = plan.targets.filter(t => t.rate > 0);
   if (targets.length) nodes.push({ id: 'target', kind: 'target', lines: ['🎯 Output', listClip(targets.map(t => `${fmt(t.rate)} ${t.item}`), 2)], tip: targets.map(t => `${fmt(t.rate)}/min ${t.item}`).join('\n') });
   const surplus = Object.keys(result.surplus);
@@ -120,7 +130,11 @@ function itemGraph(app: App): { nodes: GNode[]; edges: GEdge[] } {
       onClick: () => app.openPicker(item),
     });
   }
-  for (const [item, rate] of Object.entries(result.raw)) nodes.push({ id: `raw:${item}`, kind: 'raw', lines: [`🛒 ${item}`, `${fmt(rate)}/min from Purchasing Portal`], tip: item, onClick: () => app.openPicker(item) });
+  const coins = rawCoinCost(app.db, result.raw);
+  for (const [item, rate] of Object.entries(result.raw)) {
+    const c = coins.perItem[item];
+    nodes.push({ id: `raw:${item}`, kind: 'raw', lines: [`🛒 ${item}`, `${fmt(rate)}/min${c !== null ? ` · ${fmtCoins(c)} 🪙/min` : ''}`], tip: item, onClick: () => app.openPicker(item) });
+  }
   for (const t of plan.targets) if (t.rate > 0) nodes.push({ id: `target:${t.item}`, kind: 'target', lines: [`🎯 ${t.item}`, `${fmt(t.rate)}/min`], tip: t.item });
   for (const [item, rate] of Object.entries(result.surplus)) nodes.push({ id: `surplus:${item}`, kind: 'surplus', lines: [`↗ ${item}`, `surplus ${fmt(rate)}/min`], tip: item });
   if (heat.boiler) {

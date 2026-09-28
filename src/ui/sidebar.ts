@@ -4,6 +4,7 @@ import type { HeatingDevice } from '../model/types';
 import { STEAM_BOILER_SLOTS } from '../data/overrides';
 import { boughtSources, grownSources } from '../cauldron/pool';
 import { DEFAULT_VEGAN_EXCLUDE } from '../state/plan';
+import { fmtCoins, rawCoinCost } from '../solver/coins';
 
 const DEVICES: HeatingDevice[] = ['Steam Heating Pad', 'Stone Furnace', 'Blast Furnace'];
 
@@ -138,9 +139,12 @@ function renderSummary(app: App): HTMLElement {
   for (const [d, n] of Object.entries(heat.devices)) if (n) machineCounts.set(d, (machineCounts.get(d) ?? 0) + n);
 
   const allowed = eff.vegan?.allowedRaws;
+  const coins = rawCoinCost(db, result.raw);
+  // Most expensive first, so pricey ores (Quartz…) stand out.
   const rawRows = Object.entries(result.raw)
-    .sort((a, b) => b[1] - a[1])
+    .sort((a, b) => (coins.perItem[b[0]] ?? -1) - (coins.perItem[a[0]] ?? -1) || b[1] - a[1])
     .map(([item, rate]) => {
+      const c = coins.perItem[item];
       const badge = allowed && !allowed.has(item) ? h('span', { class: 'badge warn', title: "Not in your vegan sources, but nothing else can make what's needed" }, '⚠ not allowed') : null;
       return h(
         'li',
@@ -148,6 +152,7 @@ function renderSummary(app: App): HTMLElement {
         h('button', { class: 'link', onclick: () => app.openPicker(item), title: 'Choose a recipe for this item' }, item),
         badge,
         h('span', { class: 'num' }, `${fmt(rate)}/min`),
+        h('span', { class: 'num coins', title: c === null ? "Can't be bought: make it or supply it yourself" : `${fmt(rate)} × ${fmtCoins(c / rate)} coins` }, c === null ? '—' : `${fmtCoins(c)} 🪙`),
       );
     });
 
@@ -159,6 +164,8 @@ function renderSummary(app: App): HTMLElement {
     h(
       'dl',
       {},
+      h('dt', {}, 'Coins'),
+      h('dd', { title: 'Buying raw inputs from Purchasing Portals (rate × buy price)' }, `${fmtCoins(coins.total)} 🪙/min`),
       h('dt', {}, 'Fuel'),
       h('dd', {}, `${fmt(heat.totalFuelPerMin)} ${fuel}/min`),
       heat.steamPerMin > 0 ? h('dt', {}, 'Steam') : null,
@@ -177,7 +184,7 @@ function renderSummary(app: App): HTMLElement {
       result.fertPerMin > 0 ? h('dt', {}, 'Fertilizer') : null,
       result.fertPerMin > 0 ? h('dd', {}, `${fmt(result.fertPerMin)} ${plan.settings.fertilizer}/min`) : null,
     ),
-    h('h3', {}, 'Raw inputs'),
+    h('h3', {}, 'Raw inputs (per min)'),
     rawRows.length ? h('ul', { class: 'kv' }, ...rawRows) : h('p', { class: 'muted' }, 'None'),
     Object.keys(result.surplus).length ? h('h3', {}, 'Surplus / byproducts') : null,
     Object.keys(result.surplus).length
