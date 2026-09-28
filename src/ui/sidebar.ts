@@ -42,7 +42,7 @@ export function renderSidebar(app: App, root: HTMLElement): void {
           'aria-label': 'Items per minute',
           onchange: (e: Event) => app.update(p => (p.targets[idx].rate = Math.max(0, Number((e.target as HTMLInputElement).value) || 0))),
         }),
-        h('span', { class: 'unit' }, '/min'),
+        h('span', { class: 'unit', title: plan.planMode === 'build' ? 'Aim: sets which recipes are picked and the ratio between targets; the machines decide the real rate' : '' }, plan.planMode === 'build' ? '/min aim' : '/min'),
         h('button', { class: 'icon', title: 'Remove', onclick: () => app.update(p => p.targets.splice(idx, 1)) }, '✕'),
       ),
     ),

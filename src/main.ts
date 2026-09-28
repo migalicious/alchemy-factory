@@ -10,8 +10,9 @@ import { renderGraph } from './ui/graph';
 import { renderBuild } from './ui/build';
 import { renderResearch } from './ui/research';
 import { openPicker } from './ui/picker';
-import { toast } from './ui/dom';
+import { h, toast } from './ui/dom';
 import { rawCoinCost } from './solver/coins';
+import { buildOutcome } from './solver/build';
 
 const db = loadGameData();
 
@@ -59,6 +60,26 @@ const machinesOf = (r: App['result']) => r.lines.reduce((a, l) => a + l.machines
 
 function recompute() {
   ({ eff: app.eff, result: app.result } = solveFor(app.plan));
+  app.build = undefined;
+  if (app.plan.planMode === 'build' && app.result.status === 'optimal') {
+    // Aim solve gives each line's machines per unit of target; scale to what the counts reach.
+    const outcome = buildOutcome(app.result, app.plan.counts);
+    if (outcome) {
+      const aimMachines = Object.fromEntries(app.result.lines.map(l => [l.recipe.id, l.machines]));
+      const scaled = solvePlan(db, {
+        targets: app.plan.targets.map(t => ({ ...t, rate: t.rate * outcome.factor })),
+        choices: app.eff.choices,
+        extraRecipes: app.eff.extraRecipes,
+        settings: app.plan.settings,
+      });
+      if (scaled.status === 'optimal') {
+        // Machines on the floor are the counts you set, whether or not they're all busy.
+        for (const l of scaled.lines) l.machinesCeil = outcome.counts[l.recipe.id] ?? l.machinesCeil;
+        app.result = scaled;
+        app.build = { ...outcome, aimMachines };
+      }
+    }
+  }
   app.heat = computeHeat(db, app.result.lines, app.plan.settings, app.plan.heating);
   app.coinCompare = undefined;
   scheduleCoinCompare();
@@ -71,7 +92,7 @@ function recompute() {
 let compareTimer: number | undefined;
 function scheduleCoinCompare() {
   clearTimeout(compareTimer);
-  if (!(app.plan.settings.coinsPerBuilding > 0) || app.result.status !== 'optimal') return;
+  if (!(app.plan.settings.coinsPerBuilding > 0) || app.result.status !== 'optimal' || app.plan.planMode === 'build') return;
   const plan = app.plan;
   const result = app.result;
   compareTimer = window.setTimeout(() => {
@@ -89,6 +110,7 @@ function scheduleCoinCompare() {
 function render() {
   renderSidebar(app, document.getElementById('sidebar')!);
   renderResearch(app, document.getElementById('research')!);
+  renderPlanMode();
   const status = document.getElementById('status')!;
   const notes: string[] = [];
   if (app.result.status !== 'optimal') notes.push(app.result.message ?? '');
@@ -105,6 +127,17 @@ function render() {
     el.hidden = t !== tab;
     if (t === tab) views[t](app, el);
   }
+}
+
+function renderPlanMode() {
+  const el = document.getElementById('plan-mode')!;
+  const btn = (mode: PlanState['planMode'], label: string, title: string) =>
+    h('button', { type: 'button', class: app.plan.planMode === mode ? 'on' : '', title, onclick: () => app.update(p => (p.planMode = mode)) }, label);
+  el.replaceChildren(
+    h('span', { class: 'seg-label' }, 'Plan by'),
+    btn('rate', 'Rate', 'Size every line for your target rate'),
+    btn('build', 'Buildings', 'Start from 1 machine per line, see what it makes and where it chokes, then add machines'),
+  );
 }
 
 document.getElementById('dbver')!.textContent = `v${db.version}, ${db.date}, game ${db.gameVersion}`;

@@ -32,7 +32,9 @@ export function renderTable(app: App, root: HTMLElement): void {
     return;
   }
   const veganPicks = eff.vegan?.choices ?? {};
-  const rows = orderLines(app).map(line => {
+  let ordered = orderLines(app);
+  if (app.build && busiestFirst) ordered = [...ordered].sort((a, b) => (app.build!.util[b.recipe.id] ?? 0) - (app.build!.util[a.recipe.id] ?? 0));
+  const rows = ordered.map(line => {
     const primary = line.items[0] ?? Object.keys(line.outputs)[0];
     const lh = heat.lines.get(line.recipe.id);
     const userPick = line.items.some(i => plan.choices[i]);
@@ -76,9 +78,11 @@ export function renderTable(app: App, root: HTMLElement): void {
           ),
         )
       : '';
+    const util = app.build?.util[line.recipe.id];
+    const rowClass = [veganPick ? 'vegan-row' : '', util === undefined ? '' : util > 1 - 1e-6 ? 'choke' : util >= 0.8 ? 'tight' : ''].join(' ').trim();
     return h(
       'tr',
-      { class: veganPick ? 'vegan-row' : '' },
+      { class: rowClass },
       h('td', {}, h('button', { class: 'item-btn', onclick: () => app.openPicker(primary) }, line.items.join(' + ') || primary)),
       h(
         'td',
@@ -92,7 +96,7 @@ export function renderTable(app: App, root: HTMLElement): void {
             ? h('span', { class: 'badge warn', title: "Can't be made from your ticked sources, so it uses its normal recipe" }, '⚠ outside sources')
             : null,
       ),
-      h('td', { class: 'num' }, h('strong', {}, `${line.machinesCeil}`), h('span', { class: 'muted small' }, ` (${fmt(line.machines)})`)),
+      app.build ? countCell(app, line.recipe.id, util ?? 0) : h('td', { class: 'num' }, h('strong', {}, `${line.machinesCeil}`), h('span', { class: 'muted small' }, ` (${fmt(line.machines)})`)),
       h('td', {}, outs),
       h('td', { class: 'chips' }, ...ins),
       h('td', {}, heating),
@@ -118,6 +122,7 @@ export function renderTable(app: App, root: HTMLElement): void {
   }
 
   root.replaceChildren(
+    app.build ? buildBanner(app) : '',
     h(
       'div',
       { class: 'table-wrap' },
@@ -136,3 +141,98 @@ export function renderTable(app: App, root: HTMLElement): void {
 }
 
 export const short = (d: string) => (d === 'Steam Heating Pad' ? 'Steam pad' : d);
+
+/** Build mode: − count + with a usage bar (red = the choke point, orange = close behind). */
+function countCell(app: App, recipeId: string, util: number): HTMLElement {
+  const count = app.build!.counts[recipeId] ?? 1;
+  const set = (n: number) =>
+    app.update(p => {
+      if (n <= 1) delete p.counts[recipeId];
+      else p.counts[recipeId] = n;
+    });
+  const pct = Math.min(100, util * 100);
+  return h(
+    'td',
+    { class: 'num count-cell' },
+    h(
+      'div',
+      { class: 'stepper' },
+      h('button', { class: 'icon', title: 'One fewer', disabled: count <= 1, onclick: () => set(count - 1) }, '−'),
+      h('input', {
+        type: 'number',
+        min: 1,
+        value: count,
+        'aria-label': 'Machines on this line',
+        onchange: (e: Event) => set(Math.max(1, Math.floor(Number((e.target as HTMLInputElement).value) || 1))),
+      }),
+      h('button', { class: 'icon', title: 'One more', onclick: () => set(count + 1) }, '+'),
+    ),
+    h('div', { class: 'util', title: `${fmt(pct, 1)}% busy` }, h('div', { class: 'util-fill', style: `width:${pct}%` })),
+    h('div', { class: 'muted small' }, `${fmt(pct, 0)}% busy`),
+  );
+}
+
+/** Build mode summary: what the current machines make, the choke point, and the next step. */
+function buildBanner(app: App): HTMLElement {
+  const b = app.build!;
+  const { plan, result } = app;
+  const targets = plan.targets.filter(t => t.rate > 0);
+  const total = Object.values(b.counts).reduce((a, n) => a + n, 0);
+  const lineName = (id: string) => {
+    const l = result.lines.find(x => x.recipe.id === id);
+    return l ? `${l.items.join(' + ') || id} (${l.recipe.machine})` : id;
+  };
+  const makes = (f: number) => targets.map(t => `${fmt(t.rate * f, 3)}/min ${t.item}`).join(', ');
+  return h(
+    'div',
+    { class: 'panel build-banner' },
+    h('div', {}, `${total} machines make `, h('strong', {}, makes(b.factor)), targets.length ? ` (${fmt(b.factor * 100, 1)}% of your aim)` : ''),
+    b.bottlenecks.length
+      ? h('div', {}, h('span', { class: 'badge warn' }, 'choke point'), ' ', b.bottlenecks.map(lineName).join(', '))
+      : null,
+    b.next
+      ? h(
+          'div',
+          {},
+          `+1 ${b.next.add.length > 1 ? 'each on those lines' : 'there'} → ${makes(b.next.factor)} `,
+          h(
+            'button',
+            {
+              onclick: () =>
+                app.update(p => {
+                  for (const id of b.next!.add) p.counts[id] = (b.counts[id] ?? 1) + 1;
+                }),
+            },
+            `Add ${b.next.add.length > 1 ? `${b.next.add.length} machines` : 'it'}`,
+          ),
+          ' ',
+          h('button', { class: 'link small', onclick: () => app.update(p => (p.counts = {})) }, 'Reset to 1 each'),
+        )
+      : null,
+    h(
+      'label',
+      { class: 'toggle small' },
+      h('input', {
+        type: 'checkbox',
+        checked: busiestFirst,
+        onchange: (e: Event) => {
+          busiestFirst = (e.target as HTMLInputElement).checked;
+          try {
+            localStorage.setItem('af-planner:busiest-first', busiestFirst ? '1' : '');
+          } catch {
+            /* ignore */
+          }
+          app.update();
+        },
+      }),
+      h('span', {}, 'Busiest lines first'),
+    ),
+  );
+}
+
+let busiestFirst = false;
+try {
+  busiestFirst = localStorage.getItem('af-planner:busiest-first') === '1';
+} catch {
+  /* ignore */
+}

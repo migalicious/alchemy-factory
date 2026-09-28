@@ -33,6 +33,7 @@ npm run preview    # serve dist/ on :4173
 | `src/data/overrides.ts` | Local assumptions: Steam Boiler slots (9), external machines (Purchasing/Bank Portal). |
 | `src/model/` | Types, settings, and upgrade multiplier formulas. |
 | `src/solver/solve.ts` | LP solver (yalps): one chosen recipe per item, min machines, net output ≥ demand. It handles byproducts, dual outputs and loops. Also has recipe ordering (preferred/avoided machines) and `findLoop`. |
+| `src/solver/build.ts` | "Plan by Buildings": fixed machine counts → reachable rate, busy share per line, choke points, and what +1 would give. |
 | `src/solver/heat.ts` | Heat per line, heating devices, steam, and the boiler bank (only when `steamSupply: 'boilers'`). |
 | `src/cauldron/` | `engine.ts`: cauldron output resolution and time/heat. `pool.ts`: sources and the ingredient pool. `search.ts`: combo search and multi-step search. `cost.ts`: upstream coin-cost model. `vegan.ts`: automatic recipe picking. |
 | `src/state/plan.ts` | `PlanState`, defaults, URL-hash and localStorage (de)serialisation with migrations, `effectiveChoices` (vegan picks + user picks + loop resolution). |

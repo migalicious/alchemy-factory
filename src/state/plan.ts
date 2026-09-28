@@ -6,6 +6,10 @@ import { recipeFromId } from '../cauldron/engine';
 import { veganPlan, type VeganGoal, type VeganPlan } from '../cauldron/vegan';
 
 export interface PlanState {
+  /** rate: size the factory for the target rate. build: fixed machine counts -> what they make. */
+  planMode: 'rate' | 'build';
+  /** Machines per line (recipe id) in build mode; missing = 1. */
+  counts: Record<string, number>;
   targets: Target[];
   /** User recipe picks (DB recipe id, cauldron:* id, or 'raw'). Override vegan picks. */
   choices: Choices;
@@ -32,6 +36,8 @@ const PLAN_VERSION = 2;
 export const DEFAULT_UPGRADES = { logistics: 6, factory: 6, alchemy: 2, fuel: 4, fert: 9 };
 
 export const defaultPlan = (): PlanState => ({
+  planMode: 'rate',
+  counts: {},
   targets: [{ item: 'Philosopherˈs Stone', rate: 1 }],
   choices: {},
   heating: {},
@@ -167,6 +173,12 @@ export function sanitize(db: GameData, raw: unknown): PlanState | null {
   const strMap = (m: unknown, ok: (k: string, v: string) => boolean) =>
     Object.fromEntries(Object.entries(typeof m === 'object' && m ? m : {}).filter(([k, v]) => typeof v === 'string' && ok(k, v)));
   return {
+    planMode: r.planMode === 'build' ? 'build' : 'rate',
+    counts: Object.fromEntries(
+      Object.entries(r.counts && typeof r.counts === 'object' ? r.counts : {})
+        .filter(([k, n]) => typeof k === 'string' && typeof n === 'number' && n >= 1 && n <= 10000)
+        .map(([k, n]) => [k, Math.floor(n)]),
+    ),
     targets: Array.isArray(r.targets)
       ? r.targets.filter(t => t && db.items[t.item]).map(t => ({ item: t.item, rate: num(t.rate, 1) }))
       : base.targets,

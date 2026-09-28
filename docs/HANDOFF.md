@@ -26,6 +26,12 @@ Plans live in the URL hash, so a link can be shared; the last plan is also kept 
   - Candidates are every DB recipe plus every pool combo plus the multi-step search's best.
   - **Scoring:** fewest buildings = rate × machines-per-(item/min) + lines, including the fertilizer share and heating pads. It runs in two passes, at the target rate and then at each item's actual rate. Fertilizer's cost is iterated until it settles (a Nursery needs fertilizer, which needs herbs). The alternative goal is "Cheapest (coins)", using starfi5h's cost model.
 - **Coin weight:** "1 building ≈ N coins/min" (default 1,000) is used by both the solver and the vegan picks. At 1,000, vegan Star Dust 0.5/min drops from 42.8k to 19.6k coins/min for +9 machines. The default is a guess at the owner's income; they may tune it.
+- **Plan by: Rate / Buildings** (top bar). In Buildings mode every line starts with 1 machine, and `src/solver/build.ts` works out the reachable rate: aim × min(count ÷ machines-needed), since lines scale linearly. The table then shows:
+  - editable counts with − and +, and busy bars (red = choke point, orange ≥ 80%);
+  - a banner with the rate, the choke point, and "+1 → new rate" with an **Add** button;
+  - a "Busiest first" toggle.
+
+  The target rate becomes the "aim": it picks recipes (vegan scoring) and sets the ratios between targets. Counts are kept per recipe id in `plan.counts`. The coin comparison is skipped in this mode.
 - **Totals show what the coin weight buys**, e.g. "saves 23.2 silver/min for +9 buildings", from a second solve with coins ignored. It runs just after render so edits stay fast (about 0.5 s with vegan on).
 - **Picker ingredient search:** "With ingredient" lists every combo that makes the item and contains that ingredient (like upstream's Set Input slot).
 - **Coins/min for bought raws:** rate × buy price, where one recipe unit is one purchase (as upstream). Shown as a sidebar total and per raw item, most expensive first, and on the graph.

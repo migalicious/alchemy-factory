@@ -68,7 +68,7 @@ export function renderBuild(app: App, root: HTMLElement): void {
 
   const totalTiles = zones.reduce((a, z) => a + footprint(app, z.machine!, z.machines).tiles, 0);
   root.replaceChildren(
-    renderStarter(app),
+    app.build ? '' : renderStarter(app), // in Plan-by-Buildings mode the table's banner covers this
     h(
       'p',
       { class: 'muted small' },

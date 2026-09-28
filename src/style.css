@@ -225,3 +225,16 @@ button.option[hidden] { display: none; }
 .num.coins { min-width: 64px; color: var(--warn); }
 .ingredient-row { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: center; margin: 4px 0 6px; }
 .ingredient-row .recipe-filter { margin: 0; }
+#plan-mode { align-items: center; }
+#plan-mode .seg-label { color: var(--muted); font-weight: 600; font-size: 13px; margin-right: 6px; }
+.build-banner { margin-bottom: 10px; display: flex; flex-direction: column; gap: 6px; }
+.count-cell { min-width: 120px; }
+.stepper { display: inline-flex; align-items: center; gap: 2px; }
+.stepper input { width: 52px; text-align: right; }
+.stepper button.icon { border: 1px solid var(--border); padding: 0 7px; }
+.util { height: 5px; background: var(--surface-2); border-radius: 3px; margin: 4px 0 2px; overflow: hidden; }
+.util-fill { height: 100%; background: var(--ok); }
+tr.tight .util-fill { background: var(--warn); }
+tr.choke .util-fill { background: #c62828; }
+tr.choke td:first-child { box-shadow: inset 3px 0 0 #c62828; }
+tr.tight td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
