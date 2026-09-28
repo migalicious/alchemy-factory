@@ -68,7 +68,8 @@ haven't been tested in-game yet.
   - Grown herbs plus cheap bought raws are allowed.
   - World Tree Leaf/Core, Pyrite, Quartz and Meteorite are off by default.
   - Bought raws never go straight into cauldrons or the Paradox Crucible; only broken-down items (ingot, sand, plank…) do.
-  - Automatic picks aim for **fewest buildings**, scored as rate × machines + lines, so at low rates fewer steps win.
+  - Automatic picks aim for **fewest buildings**, scored as rate × (machines + coins/min ÷ `coinsPerBuilding`) + lines, so at low rates fewer steps win.
+- **Coin weight:** `settings.coinsPerBuilding` (default 1000) also goes into the LP objective, so the solver won't burn pricey raws. Example: Salt_Rock (Rock Salt at 9k) used just for its Sand byproduct.
 - **The recipe picker must keep listing many cauldron options.** Searching (e.g. Lavender for Oblivion Essence) is enough; don't force automatic picks to match their in-game habits.
 
 ## Conventions

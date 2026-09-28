@@ -223,3 +223,5 @@ button.option.selected { border-color: var(--accent); background: var(--accent-s
 .recipe-filter { width: 100%; margin-bottom: 6px; }
 button.option[hidden] { display: none; }
 .num.coins { min-width: 64px; color: var(--warn); }
+.ingredient-row { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: center; margin: 4px 0 6px; }
+.ingredient-row .recipe-filter { margin: 0; }

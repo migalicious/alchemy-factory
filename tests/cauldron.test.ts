@@ -161,3 +161,17 @@ describe('Paradox Crucible any-item recipes', () => {
     for (const i of Object.keys(line.recipe.inputs)) expect(db.items[i].category).not.toBe('Raw Materials');
   });
 });
+
+describe('ingredient search', () => {
+  it("finds the owners' Clay recipes when asked for Redcurrant", async () => {
+    const { findCombosWith } = await import('../src/cauldron/search');
+    const combos = findCombosWith(db, sourcePool(db), 'Redcurrant', 'Clay', { limitPerOutput: Infinity });
+    const keys = combos.map(c => [...c.inputs].sort().join('+'));
+    expect(keys).toContain('Redcurrant+Redcurrant+Sage');
+    expect(keys).toContain('Flax Fiber+Redcurrant+Sage Powder');
+    for (const c of combos) {
+      expect(c.inputs).toContain('Redcurrant');
+      expect(c.output).toBe('Clay');
+    }
+  });
+});

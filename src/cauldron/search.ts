@@ -153,3 +153,34 @@ export function multiStep(
   }
   return prev;
 }
+
+/**
+ * Every combo that contains `ingredient` (once or more) plus other items from `pool`,
+ * optionally only those making `output`. Like upstream's "Set Input" slot filter.
+ */
+export function findCombosWith(db: GameData, pool: Iterable<string>, ingredient: string, output?: string, opts: SearchOptions = {}): Combo[] {
+  if (!isCandidate(db, ingredient)) return [];
+  const hpc = opts.heatPerCopper ?? 20;
+  const base = buildItemBaseCost(db, hpc, opts.nutrPerCopper ?? 12);
+  const targets = cauldronTargets(db);
+  const fixed = fixedCauldronInputs(db);
+  const list = [...new Set([ingredient, ...pool])].filter(n => isCandidate(db, n));
+  const out: Combo[] = [];
+  const seen = new Set<string>();
+  const add = (type: CauldronType, inputs: string[], res: string | null) => {
+    if (!res || inputs.includes(res) || (output && res !== output)) return;
+    const key = inputKey(type, inputs);
+    if (fixed.has(key) || seen.has(key)) return;
+    seen.add(key);
+    out.push({ type, inputs, output: res, cost: comboCost(db, base, inputs, res, hpc), cauldronCostSum: inputs.reduce((a, i) => a + db.items[i].cauldronCost!, 0) });
+  };
+  for (let i = 0; i < list.length; i++) {
+    const a = list[i];
+    add('Advanced Cauldron', [ingredient, a], resolve2(db, [ingredient, a], targets));
+    for (let j = i; j < list.length; j++) {
+      const b = list[j];
+      add('Cauldron', [ingredient, a, b], resolve3(db, [ingredient, a, b], targets));
+    }
+  }
+  return out.sort(byCost).slice(0, opts.limitPerOutput ?? 50);
+}

@@ -3,7 +3,7 @@ import { fmt, h } from './dom';
 import { recipeLabel, recipeSummary } from './describe';
 import { cauldronRecipe } from '../cauldron/engine';
 import { allPool, sourcePool } from '../cauldron/pool';
-import { findCombos, type Combo } from '../cauldron/search';
+import { findCombos, findCombosWith, type Combo } from '../cauldron/search';
 import { chosenRecipe, producibleRecipes, recipeLookup, RAW } from '../solver/solve';
 
 type PoolKind = 'herb' | 'all';
@@ -25,6 +25,7 @@ function combos(app: App, kind: PoolKind): Map<string, Combo[]> {
 
 export function openPicker(app: App, item: string): void {
   const dlg = document.getElementById('picker') as HTMLDialogElement;
+  let ingredient = ''; // "with ingredient" filter, kept while this picker is open
   const render = () => {
     const { db, plan, eff } = app;
     const lookup = recipeLookup(db, eff.extraRecipes, plan.settings.preferMachines, plan.settings.avoidMachines);
@@ -49,9 +50,28 @@ export function openPicker(app: App, item: string): void {
     );
 
     const comboBox = h('div', { class: 'combos' }, h('p', { class: 'muted' }, 'Searching…'));
+    const ingredientInput = h('input', {
+      type: 'search',
+      list: 'items-list',
+      value: ingredient,
+      placeholder: 'With ingredient, e.g. Redcurrant',
+      'aria-label': 'Only combos containing this ingredient',
+      class: 'recipe-filter',
+    });
+    ingredientInput.addEventListener('change', () => {
+      const v = ingredientInput.value.trim();
+      ingredient = db.items[v] ? v : '';
+      if (v && !ingredient) ingredientInput.setCustomValidity('Unknown item');
+      else ingredientInput.setCustomValidity('');
+      fillCombos();
+    });
+    const ingredientBox = h('label', { class: 'ingredient-row' }, h('span', { class: 'muted small' }, 'With ingredient'), ingredientInput);
     const fillCombos = () => {
       const avoid = new Set(app.plan.veganExclude);
-      const list = (combos(app, poolKind).get(item) ?? []).filter(c => poolKind === 'all' || !c.inputs.some(i => avoid.has(i))).slice(0, 15);
+      const allowed = (c: Combo) => poolKind === 'all' || !c.inputs.some(i => avoid.has(i) && i !== ingredient);
+      const list = ingredient
+        ? findCombosWith(db, poolFor(app, poolKind), ingredient, item, { limitPerOutput: 150 }).filter(allowed)
+        : (combos(app, poolKind).get(item) ?? []).filter(allowed).slice(0, 15);
       comboBox.replaceChildren(
         ...(list.length
           ? list.map(c => {
@@ -63,7 +83,17 @@ export function openPicker(app: App, item: string): void {
                 h('div', { class: 'muted small' }, `${fmt(r.baseTime ?? 0)} s · ${fmt(r.heatCost ?? 0)} P/s · est. cost ${c.cost === null ? '?' : fmt(c.cost)}`),
               );
             })
-          : [h('p', { class: 'muted' }, poolKind === 'herb' ? 'No single-step combo from your sources makes this. Try "All items", or turn on 🌿 Vegan for multi-step chains.' : 'No cauldron combo makes this item.')]),
+          : [
+              h(
+                'p',
+                { class: 'muted' },
+                ingredient
+                  ? `No combo with ${ingredient} makes ${item}${poolKind === 'herb' ? ' from your sources. Try "All items".' : '.'}`
+                  : poolKind === 'herb'
+                    ? 'No single-step combo from your sources makes this. Try "All items", or turn on 🌿 Vegan for multi-step chains.'
+                    : 'No cauldron combo makes this item.',
+              ),
+            ]),
       );
     };
     // Defer so the dialog paints before a (possibly ~0.5 s) search.
@@ -73,8 +103,14 @@ export function openPicker(app: App, item: string): void {
     dlg.replaceChildren(
       h(
         'form',
-        { method: 'dialog', class: 'picker-inner' },
-        h('header', {}, h('h2', {}, item), h('button', { class: 'icon', value: 'close', 'aria-label': 'Close' }, '✕')),
+        {
+          method: 'dialog',
+          class: 'picker-inner',
+          // Enter in a search box triggers implicit submission (= closing the dialog);
+          // never submit, the ✕ button closes explicitly.
+          onsubmit: (e: Event) => e.preventDefault(),
+        },
+        h('header', {}, h('h2', {}, item), h('button', { type: 'button', class: 'icon', 'aria-label': 'Close', onclick: () => dlg.close() }, '✕')),
         h(
           'div',
           { class: 'picker-actions' },
@@ -99,6 +135,7 @@ export function openPicker(app: App, item: string): void {
                 ),
               ),
               h('p', { class: 'muted small' }, 'Any 3 ingredients (Cauldron) or 2 (Advanced Cauldron) whose combined cauldron value lands nearest this item. Sorted by estimated cost.'),
+              ingredientBox,
               comboBox,
             )
           : null,
@@ -125,4 +162,9 @@ function recipeList(buttons: HTMLButtonElement[]): HTMLElement {
   input.addEventListener('input', apply);
   apply();
   return h('div', {}, input, box);
+}
+
+function poolFor(app: App, kind: PoolKind): Set<string> {
+  const { db, plan } = app;
+  return kind === 'all' ? allPool(db) : sourcePool(db, { exclude: plan.veganExclude, depth: plan.veganDepth, rawInCauldron: plan.veganRawInCauldron });
 }
