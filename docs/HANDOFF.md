@@ -1,6 +1,6 @@
 # Handoff: Alchemy Factory Planner
 
-_Last updated: 2026-09-27. Live at https://migalicious.github.io/alchemy-factory/ (repo `migalicious/alchemy-factory`, branch `main`). All deployed; 61 tests in 8 files are green._
+_Last updated: 2026-09-27. Live at https://migalicious.github.io/alchemy-factory/ (repo `migalicious/alchemy-factory`, branch `main`). All deployed; 64 tests in 8 files are green._
 
 ## What it is
 
@@ -32,7 +32,8 @@ Plans live in the URL hash, so a link can be shared; the last plan is also kept 
 - **The table shows:**
   - − / + counts per line, and busy bars (red = choke point, orange ≥ 80%);
   - a banner: "N machines make X/min (Y% of your aim)", the choke point, and "+1 there → new rate" with an **Add it** button;
-  - "Reset to 1 each" and "Busiest lines first".
+  - "Reset to 1 each" and "Busiest lines first";
+  - **"Reach [X]/min"**, which defaults to the aim. It lists which lines need more machines and how many: each line needs ⌈machines-at-aim × X ÷ aim⌉ (`countsToReach`). **Apply** sets those counts. Example: vegan Moonlit Soap from 1 per line → reach 0.1/min = add 76 machines → 126 machines, 0.105/min.
 - The plan is solved again at the reachable rate, so Totals, heat, coins and the Build tab match. Each line's `machinesCeil` is overwritten with your count.
 - The target rate becomes the **aim**: it steers vegan recipe picks and the ratios between targets.
 - Counts are stored per recipe id in `plan.counts`. If a line's recipe changes, that line goes back to 1.
@@ -79,9 +80,7 @@ Plans live in the URL hash, so a link can be shared; the last plan is also kept 
 ## Ideas not done (ask before building)
 
 - A per-item "lock": keep an automatic pick fixed when settings change.
-- **Buildings mode:**
-  - the inverse question: "what do I add to reach X/min?", i.e. show Rate-mode counts minus current counts;
-  - flag idle machines.
+- **Buildings mode:** flag idle machines (count well above what the current rate needs).
 - Coin-weight input in silver instead of copper.
 - Refresh the vendored DB when upstream updates (instructions in `src/data/SOURCE.md`), then rerun the tests.
 - Graph readability for very large plans is still limited. The Build tab, the Buildings-mode table and the Starter panel are the most usable views there.

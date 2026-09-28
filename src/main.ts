@@ -65,7 +65,8 @@ function recompute() {
     // Aim solve gives each line's machines per unit of target; scale to what the counts reach.
     const outcome = buildOutcome(app.result, app.plan.counts);
     if (outcome) {
-      const aimMachines = Object.fromEntries(app.result.lines.map(l => [l.recipe.id, l.machines]));
+      const aim = app.result;
+      const aimMachines = Object.fromEntries(aim.lines.map(l => [l.recipe.id, l.machines]));
       const scaled = solvePlan(db, {
         targets: app.plan.targets.map(t => ({ ...t, rate: t.rate * outcome.factor })),
         choices: app.eff.choices,
@@ -76,7 +77,7 @@ function recompute() {
         // Machines on the floor are the counts you set, whether or not they're all busy.
         for (const l of scaled.lines) l.machinesCeil = outcome.counts[l.recipe.id] ?? l.machinesCeil;
         app.result = scaled;
-        app.build = { ...outcome, aimMachines };
+        app.build = { ...outcome, aimMachines, aim };
       }
     }
   }

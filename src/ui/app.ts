@@ -12,7 +12,7 @@ export interface App {
   heat: HeatResult;
   eff: ReturnType<typeof effectiveChoices>;
   /** Build mode: what the machine counts reach, and where it chokes. */
-  build?: BuildOutcome & { aimMachines: Record<string, number> };
+  build?: BuildOutcome & { aimMachines: Record<string, number>; aim: SolveResult };
   /** Same plan solved with coins ignored, to show what the coin weight buys. */
   coinCompare?: { coinsSaved: number; extraMachines: number };
   /** Mutate the plan, re-solve and re-render everything. */

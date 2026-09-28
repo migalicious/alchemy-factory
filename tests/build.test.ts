@@ -28,3 +28,23 @@ describe('plan by buildings', () => {
     expect(o.factor).toBeGreaterThan(1); // one saw makes more than the 1/min aim
   });
 });
+
+describe('what to add to reach a rate', () => {
+  it('Plank 60/min with 1 saw: add 1 (30/min each)', async () => {
+    const { countsToReach } = await import('../src/solver/build');
+    const r = countsToReach(aim('Plank', 60), 1, {});
+    expect(r.need.Plank).toBe(2);
+    expect(r.totalAdd).toBe(1);
+  });
+  it('applying the counts reaches the target exactly or better', async () => {
+    const { countsToReach } = await import('../src/solver/build');
+    const a = aim('Steel Ingot', 5);
+    const { need } = countsToReach(a, 2, {}); // reach 10/min
+    expect(buildOutcome(a, need)!.factor).toBeGreaterThanOrEqual(2 * (1 - 1e-6)); // LP noise ~1e-8
+  });
+  it('nothing to add when current counts already suffice', async () => {
+    const { countsToReach } = await import('../src/solver/build');
+    const a = aim('Plank', 60);
+    expect(countsToReach(a, 1, { Plank: 5 }).totalAdd).toBe(0);
+  });
+});

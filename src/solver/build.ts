@@ -34,3 +34,25 @@ export function buildOutcome(aim: SolveResult, counts: Record<string, number>): 
   const nextFactor = factorWith(bumped);
   return { factor, counts: full, util, bottlenecks, next: nextFactor > factor * (1 + 1e-9) ? { factor: nextFactor, add: bottlenecks } : null };
 }
+
+/**
+ * Machines each line needs to run the plan at `scale` x the aim (lines scale linearly),
+ * and how many to add on top of the current counts.
+ */
+export function countsToReach(
+  aim: SolveResult,
+  scale: number,
+  current: Record<string, number>,
+): { need: Record<string, number>; add: { recipeId: string; add: number; need: number }[]; totalAdd: number } {
+  const need: Record<string, number> = {};
+  const add: { recipeId: string; add: number; need: number }[] = [];
+  for (const l of aim.lines) {
+    if (l.machines <= 1e-9) continue;
+    const n = Math.max(1, Math.ceil(l.machines * scale - 1e-6));
+    need[l.recipe.id] = n;
+    const have = Math.max(1, current[l.recipe.id] ?? 1);
+    if (n > have) add.push({ recipeId: l.recipe.id, add: n - have, need: n });
+  }
+  add.sort((a, b) => b.add - a.add);
+  return { need, add, totalAdd: add.reduce((a, x) => a + x.add, 0) };
+}

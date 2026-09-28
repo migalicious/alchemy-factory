@@ -3,6 +3,7 @@ import { fmt, h } from './dom';
 import { isHeated, recipeLabel } from './describe';
 import type { HeatingDevice } from '../model/types';
 import type { Line } from '../solver/solve';
+import { countsToReach } from '../solver/build';
 
 const DEVICES: HeatingDevice[] = ['Steam Heating Pad', 'Stone Furnace', 'Blast Furnace'];
 
@@ -209,6 +210,7 @@ function buildBanner(app: App): HTMLElement {
           h('button', { class: 'link small', onclick: () => app.update(p => (p.counts = {})) }, 'Reset to 1 each'),
         )
       : null,
+    reachRow(app, lineName),
     h(
       'label',
       { class: 'toggle small' },
@@ -235,4 +237,57 @@ try {
   busiestFirst = localStorage.getItem('af-planner:busiest-first') === '1';
 } catch {
   /* ignore */
+}
+
+/** Rate the "Reach" box asks for (first target, items/min); null = use the aim. Kept while the page is open. */
+let reachRate: number | null = null;
+
+/** "Reach X/min → add these machines", from the aim solve scaled linearly. */
+function reachRow(app: App, lineName: (id: string) => string): HTMLElement | string {
+  const b = app.build!;
+  const first = app.plan.targets.find(t => t.rate > 0);
+  if (!first) return '';
+  const want = reachRate ?? first.rate;
+  const { need, add, totalAdd } = countsToReach(b.aim, want / first.rate, b.counts);
+  const input = h('input', {
+    type: 'number',
+    min: 0,
+    step: 'any',
+    value: want,
+    class: 'reach-input',
+    'aria-label': `Rate to reach, ${first.item} per minute`,
+    onchange: (e: Event) => {
+      const v = Number((e.target as HTMLInputElement).value);
+      reachRate = v > 0 ? v : null;
+      app.update();
+    },
+  });
+  const shown = add.slice(0, 6).map(a => `+${a.add} ${lineName(a.recipeId)}`);
+  if (add.length > 6) shown.push(`+${add.length - 6} more lines`);
+  return h(
+    'div',
+    { class: 'reach' },
+    h('span', {}, 'Reach '),
+    input,
+    h('span', {}, `/min ${first.item}${app.plan.targets.length > 1 ? ' (others keep their ratio)' : ''}: `),
+    totalAdd
+      ? h(
+          'span',
+          {},
+          h('strong', {}, `add ${totalAdd} machine${totalAdd === 1 ? '' : 's'}`),
+          h('span', { class: 'muted small' }, ` — ${shown.join(', ')} `),
+          h(
+            'button',
+            {
+              title: 'Set these counts',
+              onclick: () =>
+                app.update(p => {
+                  for (const [id, n] of Object.entries(need)) if (n > (p.counts[id] ?? 1)) p.counts[id] = n;
+                }),
+            },
+            'Apply',
+          ),
+        )
+      : h('span', { class: 'ok-text' }, 'your machines already reach that.'),
+  );
 }

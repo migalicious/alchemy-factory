@@ -238,3 +238,6 @@ tr.tight .util-fill { background: var(--warn); }
 tr.choke .util-fill { background: #c62828; }
 tr.choke td:first-child { box-shadow: inset 3px 0 0 #c62828; }
 tr.tight td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+.reach { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.reach-input { width: 80px; text-align: right; }
+.ok-text { color: var(--ok); }

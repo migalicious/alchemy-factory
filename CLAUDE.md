@@ -37,7 +37,7 @@ npm run preview    # serve dist/ on :4173
 | `src/solver/solve.ts` | LP solver (yalps). One chosen recipe per item; net output ≥ demand. **Objective:** machines + raw coins/min ÷ `coinsPerBuilding`. Handles byproducts, dual outputs and loops. Also has recipe ordering (`producibleRecipes`: preferred-machine twins first, avoided machines hidden) and `findLoop`. |
 | `src/solver/heat.ts` | Heat per line, heating devices, steam, and the boiler bank (only when `steamSupply: 'boilers'`). |
 | `src/solver/coins.ts` | Coins/min for bought raws (`rawCoinCost`) and `fmtCoins` (🥉 copper / 🥈 silver / 🥇 gold). |
-| `src/solver/build.ts` | "Plan by Buildings": fixed machine counts → reachable rate, busy share per line, choke points, and what +1 would give. |
+| `src/solver/build.ts` | "Plan by Buildings": fixed machine counts → reachable rate, busy share per line, choke points, what +1 would give (`buildOutcome`), and the counts needed to reach a chosen rate (`countsToReach`). |
 | `src/cauldron/` | `engine.ts`: cauldron output resolution and time/heat. `pool.ts`: grown/bought sources and the ingredient pool. `search.ts`: `findCombos`, `findCombosWith` (by ingredient) and `multiStep`. `cost.ts`: upstream coin-cost model. `vegan.ts`: automatic recipe picking. |
 | `src/state/plan.ts` | `PlanState`, `defaultPlan()` (the owner's defaults), URL-hash and localStorage (de)serialisation with migrations. `effectiveChoices` combines vegan picks, user picks and loop resolution. `veganFor` does two-pass scoring with a cache. |
 | `src/main.ts` | Wires everything together: `recompute()` (solve → Buildings-mode scaling → heat), then a deferred coin comparison, then render. |
