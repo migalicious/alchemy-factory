@@ -27,12 +27,12 @@ export function rawCoinCost(db: GameData, raw: Record<string, number>): CoinCost
 /**
  * Prices in the data are copper. In-game 1,000 copper = 1 silver and 100 silver = 1 gold
  * (Silver Coin sells for 1,000, Gold Coin for 100,000), so show the largest unit:
- * 850 -> "850 copper", 19_600 -> "19.6 silver", 250_000 -> "2.5 gold".
+ * with medal emoji as the coin icons: 850 -> "850 🥉", 19_600 -> "19.6 🥈", 250_000 -> "2.5 🥇".
  */
 export function fmtCoins(copper: number): string {
   const abs = Math.abs(copper);
   const num = (x: number) => (Math.abs(x) >= 100 ? x.toFixed(0) : Math.abs(x) >= 10 ? x.toFixed(1).replace(/\.0$/, '') : x.toFixed(2).replace(/\.?0+$/, ''));
-  if (abs >= 100_000) return `${num(copper / 100_000)} gold`;
-  if (abs >= 1_000) return `${num(copper / 1_000)} silver`;
-  return `${num(copper)} copper`;
+  if (abs >= 100_000) return `${num(copper / 100_000)} 🥇`;
+  if (abs >= 1_000) return `${num(copper / 1_000)} 🥈`;
+  return `${num(copper)} 🥉`;
 }

@@ -94,7 +94,7 @@ export function renderSidebar(app: App, root: HTMLElement): void {
         title:
           'How much buying raws should count against building more. 1000 = saving 1,000 coins/min is worth one extra building. Lower it to avoid pricey raws (Rock Salt, Quartz…) harder; 0 ignores coins.',
       },
-      h('span', {}, '1 building ≈ coins/min'),
+      h('span', { title: '🥉 copper · 🥈 silver (1,000 🥉) · 🥇 gold (100 🥈)' }, '1 building ≈ 🥉 copper/min'),
       h('input', {
         type: 'number',
         min: 0,

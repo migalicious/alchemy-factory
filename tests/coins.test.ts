@@ -21,13 +21,13 @@ describe('coin cost of bought raws', () => {
     const r = solvePlan(db, { targets: [{ item: 'Steel Ingot', rate: 1 }], choices: { 'Coke Powder': RAW }, settings: defaultSettings() });
     expect(rawCoinCost(db, r.raw).perItem['Coke Powder']).toBeNull();
   });
-  it('formats copper as copper / silver / gold', () => {
-    expect(fmtCoins(850)).toBe('850 copper');
-    expect(fmtCoins(5.25)).toBe('5.25 copper');
-    expect(fmtCoins(19_600)).toBe('19.6 silver');
-    expect(fmtCoins(1_000)).toBe('1 silver');
-    expect(fmtCoins(250_000)).toBe('2.5 gold');
-    expect(fmtCoins(12_000_000)).toBe('120 gold');
+  it('formats copper as 🥉 copper / 🥈 silver / 🥇 gold', () => {
+    expect(fmtCoins(850)).toBe('850 🥉');
+    expect(fmtCoins(5.25)).toBe('5.25 🥉');
+    expect(fmtCoins(19_600)).toBe('19.6 🥈');
+    expect(fmtCoins(1_000)).toBe('1 🥈');
+    expect(fmtCoins(250_000)).toBe('2.5 🥇');
+    expect(fmtCoins(12_000_000)).toBe('120 🥇');
   });
 });
 
