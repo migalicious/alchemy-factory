@@ -25,6 +25,7 @@ Plans live in the URL hash, so a link can be shared; the last plan is also kept 
   - The cauldron pool is those sources + 2 processing steps. Bought raws aren't allowed straight into cauldrons or the Paradox Crucible.
   - Candidates are every DB recipe plus every pool combo plus the multi-step search's best.
   - **Scoring:** fewest buildings = rate × machines-per-(item/min) + lines, including the fertilizer share and heating pads. It runs in two passes, at the target rate and then at each item's actual rate. Fertilizer's cost is iterated until it settles (a Nursery needs fertilizer, which needs herbs). The alternative goal is "Cheapest (coins)", using starfi5h's cost model.
+- **Coins/min for bought raws:** rate × buy price, where one recipe unit is one purchase (as upstream). Shown as a sidebar total and per raw item, most expensive first, and on the graph.
 - **Data:** the Paradox Crucible "any item → Oblivion Essence" recipe is expanded per item (e.g. Lavender, 8.3 s).
 
 ## Open questions / unverified
