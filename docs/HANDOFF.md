@@ -1,54 +1,90 @@
 # Handoff: Alchemy Factory Planner
 
-_Last updated: 2026-09-27. Live at https://migalicious.github.io/alchemy-factory/ (repo `migalicious/alchemy-factory`)._
+_Last updated: 2026-09-27. Live at https://migalicious.github.io/alchemy-factory/ (repo `migalicious/alchemy-factory`, branch `main`). All deployed; 61 tests in 8 files are green._
 
 ## What it is
 
 A planner that combines codex's ease of use with starfi5h's data and mechanics:
 - Each item appears once.
-- Recipes swap per item.
+- Recipes swap per item, including cauldron combos.
 - Steam heating is supported.
-- A "🌿 Vegan" automatic picker chooses plant-based and cheap-ore routes, using cauldron combos where they need fewer buildings.
+- A "🌿 Vegan" automatic picker chooses plant-based and cheap-ore routes that need the fewest buildings and coins.
 
 Plans live in the URL hash, so a link can be shared; the last plan is also kept in localStorage.
 
-## Current state (all deployed, 52 tests green)
+## Current state
 
-- **Views:**
-  - **Table:** one row per production line, with a recipe picker and per-line heating override.
-  - **Build:** one area per machine type, with footprint and stack-per-floor, plus a **Starter build** panel: the rate you get with one machine per line, and which lines to scale first.
-  - **Graph:** Zones or Items mode, left-to-right or top-down. Lines are coloured by source; portal inputs, steam and surplus use dashed or dotted styles. Tap a box to focus its connections.
-- **Solver:** an LP (yalps) solves one chosen recipe per item; loops are detected and named.
-  - A user pick that loops with an automatic pick sends the automatic pick back to its normal recipe.
-- **Vegan picker (`src/cauldron/vegan.ts`):**
-  - Sources are grown herbs plus Purchasing Portal raws you tick; each shows its buy price.
-  - The cauldron pool is those sources + 2 processing steps. Bought raws aren't allowed straight into cauldrons or the Paradox Crucible.
-  - Candidates are every DB recipe plus every pool combo plus the multi-step search's best.
-  - **Scoring:** fewest buildings = rate × machines-per-(item/min) + lines, including the fertilizer share and heating pads. It runs in two passes, at the target rate and then at each item's actual rate. Fertilizer's cost is iterated until it settles (a Nursery needs fertilizer, which needs herbs). The alternative goal is "Cheapest (coins)", using starfi5h's cost model.
-- **Coin weight:** "1 building ≈ N coins/min" (default 1,000) is used by both the solver and the vegan picks. At 1,000, vegan Star Dust 0.5/min drops from 42.8k to 19.6k coins/min for +9 machines. The default is a guess at the owner's income; they may tune it.
-- **Plan by: Rate / Buildings** (top bar). In Buildings mode every line starts with 1 machine, and `src/solver/build.ts` works out the reachable rate: aim × min(count ÷ machines-needed), since lines scale linearly. The table then shows:
-  - editable counts with − and +, and busy bars (red = choke point, orange ≥ 80%);
-  - a banner with the rate, the choke point, and "+1 → new rate" with an **Add** button;
-  - a "Busiest first" toggle.
+### Layout
+- **Top bar:** **Plan by: Rate | Buildings**, the research levels, the 🌿 Vegan toggle, and "Copy share link".
+- **Sidebar:**
+  - targets;
+  - the vegan panel (when on);
+  - Heating & fuel: default heating, steam source, furnace, fuel, fertilizer, **1 building ≈ 🥉 copper/min**, prefer Enhanced Grinder, never use Seed Plots;
+  - Totals: coins/min, fuel, steam, heat, fertilizer, raw inputs (with coins/min, most expensive first), surplus, buildings.
+- **Tabs:**
+  - **Table:** one row per production line, with the recipe picker and a per-line heating override.
+  - **Build:** one area per machine type (footprint, stack-per-floor, gets/sends), plus a **Starter build** panel in Rate mode.
+  - **Graph:** Zones or Items mode, left→right or top↓down. Belts are coloured by source; Purchasing Portal inputs are orange dashed, steam blue dotted, surplus grey dashed. Tap a box to focus its connections.
 
-  The target rate becomes the "aim": it picks recipes (vegan scoring) and sets the ratios between targets. Counts are kept per recipe id in `plan.counts`. The coin comparison is skipped in this mode.
-- **Totals show what the coin weight buys**, e.g. "saves 23.2 silver/min for +9 buildings", from a second solve with coins ignored. It runs just after render so edits stay fast (about 0.5 s with vegan on).
-- **Picker ingredient search:** "With ingredient" lists every combo that makes the item and contains that ingredient (like upstream's Set Input slot).
-- **Coins/min for bought raws:** rate × buy price, where one recipe unit is one purchase (as upstream). Shown as a sidebar total and per raw item, most expensive first, and on the graph.
-- **Data:** the Paradox Crucible "any item → Oblivion Essence" recipe is expanded per item (e.g. Lavender, 8.3 s).
+### Plan by Buildings
+- Every line starts with 1 machine.
+- `src/solver/build.ts` computes the reachable rate: aim × min(count ÷ machines-needed). This works because lines scale linearly with fixed recipes.
+- **The table shows:**
+  - − / + counts per line, and busy bars (red = choke point, orange ≥ 80%);
+  - a banner: "N machines make X/min (Y% of your aim)", the choke point, and "+1 there → new rate" with an **Add it** button;
+  - "Reset to 1 each" and "Busiest lines first".
+- The plan is solved again at the reachable rate, so Totals, heat, coins and the Build tab match. Each line's `machinesCeil` is overwritten with your count.
+- The target rate becomes the **aim**: it steers vegan recipe picks and the ratios between targets.
+- Counts are stored per recipe id in `plan.counts`. If a line's recipe changes, that line goes back to 1.
+- The coin comparison is skipped in this mode.
+
+### Solver
+- LP via yalps. One chosen recipe per item.
+- **Objective:** machines + raw coins/min ÷ `coinsPerBuilding` (default 1,000 🥉). The coin term stops it running Salt_Rock (Rock Salt at 9k) just for its Sand.
+- Loops are detected and named.
+- If a user pick closes a loop with an automatic pick, the automatic pick goes back to its normal recipe, and a note tells you.
+
+### Vegan picker (`src/cauldron/vegan.ts`)
+- **Sources:** herbs grown in Nurseries, plus the Purchasing Portal raws you tick, each with its buy price.
+  - Off by default: World Tree Leaf/Core, Pyrite, Quartz, Meteorite.
+- **Cauldron pool:** sources + 2 processing steps, e.g. ore → ingot → sand. Bought raws can't go straight into cauldrons or the Paradox Crucible (there's a toggle).
+- **Candidates:** every DB recipe, every combo from the pool, and the multi-step search's best.
+- **Scoring (fewest buildings):** rate × (machines + coins ÷ coinsPerBuilding) + lines. Machines include the fertilizer share and heating pads.
+  - Two passes: at the target rate, then at each item's actual rate.
+  - Fertilizer's machine and coin cost is iterated until it settles.
+  - Alternative goal: "Cheapest (coins)" (upstream cost model).
+- **Totals** show what the coin weight buys, e.g. "saves 23.2 🥈/min for +9 buildings". This comes from a second solve with coins ignored, run just after render.
+
+### Picker
+- DB recipes, plus a filter box when there are more than 10 (Oblivion Essence has 91 Paradox options).
+- "Treat as raw input", and reset.
+- Cauldron combos (🌿 your sources / all items), plus **"With ingredient"** search, which includes doubles like Redcurrant ×2 + Sage.
+
+### Reference numbers (owner defaults, vegan on)
+
+| Target | Rate mode | Buildings mode, 1 per line |
+|---|---|---|
+| Moonlit Soap | 0.1/min: ~126 machines, ~21.5 🥈/min | 50 machines → 0.009/min; first choke point is the Oblivion Essence Paradox Crucible |
+| Star Dust | 0.5/min: ~108 machines, ~19.6 🥈/min | — |
 
 ## Open questions / unverified
 
 - **Advanced Cauldron rules** are ported from upstream but untested in-game. Automatic picks use them, e.g. Clay = Iron Ingot + Iron Ingot. The owner has Advanced Cauldrons but hasn't tried them. If an in-game test disagrees, fix `resolve2` in `src/cauldron/engine.ts`, or add a setting to keep automatic picks off the Advanced Cauldron.
+- **The default coin weight (1,000 🥉 per building)** is our pick. It gives roughly half the coins for about 5–10% more buildings. The owner confirmed that trade-off is what they want, but may tune the number. The input is in copper; offer silver if it feels awkward.
 - **Steam Boiler slot count (9)** comes from the owner ("I think"); it only matters when "Plan boilers" is selected.
 - **Cauldron and Advanced Cauldron have no `slotsRequired` in the DB**; they're treated as 1 slot, like upstream, and marked "?" in the table.
 - **Ruby's fixed DB recipe** doesn't follow the cauldron formula, so combos with its inputs are suppressed. There may be other hidden overrides in the game that we don't know about.
+- **In Buildings mode, the aim affects recipe choice.** Vegan picks are scored at the aim rate, so a very different real rate could favour other recipes. We haven't seen this cause a problem.
 
 ## Ideas not done (ask before building)
 
 - A per-item "lock": keep an automatic pick fixed when settings change.
+- **Buildings mode:**
+  - the inverse question: "what do I add to reach X/min?", i.e. show Rate-mode counts minus current counts;
+  - flag idle machines.
+- Coin-weight input in silver instead of copper.
 - Refresh the vendored DB when upstream updates (instructions in `src/data/SOURCE.md`), then rerun the tests.
-- Graph readability for very large plans is still limited. The Build tab lists and the Starter panel are the most usable views there.
+- Graph readability for very large plans is still limited. The Build tab, the Buildings-mode table and the Starter panel are the most usable views there.
 
 ## Gotchas hit during development
 
@@ -56,3 +92,7 @@ Plans live in the URL hash, so a link can be shared; the last plan is also kept 
 - **LP results carry ~1e-6 noise**, so raw/surplus reporting uses a relative tolerance.
 - **"Prefer Enhanced Grinder" must only swap identical-I/O twins.** Otherwise Copper Powder loops through Copper Ingot.
 - **Turning Seed Plots off quietly broke vegan scoring**, because nothing could bootstrap the fertilizer cost. The coverage tests in `tests/cauldron.test.ts` guard against that now.
+- **A min-machines LP treats buying as free**, so it overused Salt_Rock for its Sand byproduct. Fixed by the coin term.
+- **Keeping only the 12 coin-cheapest combos per item hid good short recipes** (Redcurrant ×2 + Sage was ranked 253rd). Vegan now considers every pool combo.
+- **Pressing Enter in a `<form method="dialog">` search box** clicks the first submit button (the ✕) and closes the dialog.
+- **Building the combo list with `[...list, x]` inside the triple loop** was quadratic: 8 s for all items. It uses `push` now.
