@@ -87,6 +87,22 @@ export function renderSidebar(app: App, root: HTMLElement): void {
       app.update(p => (p.settings.furnace = v as 'Stone Furnace' | 'Blast Furnace')),
     ),
     select('Fuel', plan.settings.fuel, fuels, v => app.update(p => (p.settings.fuel = v))),
+    h(
+      'label',
+      {
+        class: 'field',
+        title:
+          'How much buying raws should count against building more. 1000 = saving 1,000 coins/min is worth one extra building. Lower it to avoid pricey raws (Rock Salt, Quartz…) harder; 0 ignores coins.',
+      },
+      h('span', {}, '1 building ≈ coins/min'),
+      h('input', {
+        type: 'number',
+        min: 0,
+        step: 500,
+        value: plan.settings.coinsPerBuilding,
+        onchange: (e: Event) => app.update(p => (p.settings.coinsPerBuilding = Math.max(0, Number((e.target as HTMLInputElement).value) || 0))),
+      }),
+    ),
     select('Fertilizer (Nursery)', plan.settings.fertilizer, ferts, v => app.update(p => (p.settings.fertilizer = v))),
     h(
       'label',

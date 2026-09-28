@@ -47,7 +47,7 @@ const veganCache = new Map<string, VeganPlan>();
 function cachedVegan(db: GameData, opts: Parameters<typeof veganPlan>[1] & object): VeganPlan {
   // Only settings that change the scoring go in the key (fuel, steam, stacks etc. don't).
   const st = opts.settings;
-  const key = JSON.stringify({ ...opts, settings: st && { u: st.upgrades, f: st.fertilizer, h: st.heating, p: st.preferMachines, a: st.avoidMachines } });
+  const key = JSON.stringify({ ...opts, settings: st && { u: st.upgrades, f: st.fertilizer, h: st.heating, p: st.preferMachines, a: st.avoidMachines, c: st.coinsPerBuilding } });
   let v = veganCache.get(key);
   if (!v) {
     if (veganCache.size > 30) veganCache.clear();
@@ -191,6 +191,7 @@ export function sanitize(db: GameData, raw: unknown): PlanState | null {
         ? s.avoidMachines.filter(m => typeof m === 'string' && db.machines[m])
         : base.settings.avoidMachines,
       steamSupply: s.steamSupply === 'boilers' ? 'boilers' : 'existing',
+      coinsPerBuilding: num(s.coinsPerBuilding, base.settings.coinsPerBuilding),
       stacks:
         s.stacks && typeof s.stacks === 'object'
           ? Object.fromEntries(

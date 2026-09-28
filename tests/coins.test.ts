@@ -27,3 +27,15 @@ describe('coin cost of bought raws', () => {
     expect(fmtCoins(3_400_000)).toBe('3.4M');
   });
 });
+
+describe('coin weighting', () => {
+  it("stops the solver running Salt_Rock (Rock Salt @9k) just for its Sand", () => {
+    const run = (cpb: number) => {
+      const s = defaultSettings();
+      s.coinsPerBuilding = cpb;
+      const r = solvePlan(db, { targets: [{ item: 'Saturn', rate: 0.1 }], choices: {}, settings: s });
+      return rawCoinCost(db, r.raw).total;
+    };
+    expect(run(1000)).toBeLessThan(run(0) * 0.6);
+  });
+});

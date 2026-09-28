@@ -200,8 +200,17 @@ export function solvePlan(db: GameData, input: PlanInput): SolveResult {
   // Minimise machine count (only matters when byproducts give a choice).
   const net = (r: Recipe, item: string) => outputYield(r, item, m) - (r.inputs[item] ?? 0);
   const variables: Record<string, Coefficients> = {};
+  // Objective: machines + coins spent on bought raws / coinsPerBuilding, so extra runs of a
+  // byproduct recipe that eats a pricey raw (Salt_Rock for its Sand) don't look free.
+  const coinWeight = settings.coinsPerBuilding > 0 ? 1 / settings.coinsPerBuilding : 0;
+  const rawPrice = (item: string) => {
+    if (producedBy.has(item)) return 0;
+    const it = db.items[item];
+    return (it?.category === 'Currency' ? it.sellPrice : it?.buyPrice) ?? 0;
+  };
   for (const r of active.values()) {
-    const coeffs: Record<string, number> = { machines: 1 / batchesPerMachine(db, r, settings, m) };
+    const coinsPerBatch = Object.entries(r.inputs).reduce((a, [i, q]) => a + q * rawPrice(i), 0);
+    const coeffs: Record<string, number> = { machines: 1 / batchesPerMachine(db, r, settings, m) + coinWeight * coinsPerBatch };
     for (const item of new Set([...Object.keys(r.inputs), ...Object.keys(r.outputs)])) {
       if (producedBy.has(item)) coeffs[`i:${item}`] = net(r, item);
     }

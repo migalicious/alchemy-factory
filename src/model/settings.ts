@@ -17,6 +17,11 @@ export interface Settings {
   avoidMachines: string[];
   /** Where steam comes from: plan a boiler bank, or an existing supply (just report demand). */
   steamSupply: 'existing' | 'boilers';
+  /**
+   * Coins/min that count as much as one building when choosing between routes
+   * (solver objective and vegan picks). 0 = ignore coins.
+   */
+  coinsPerBuilding: number;
   /** Machines stacked per floor when building (e.g. Nursery: 3). Default 1. */
   stacks: Record<string, number>;
 }
@@ -30,6 +35,7 @@ export const defaultSettings = (): Settings => ({
   preferMachines: ['Enhanced Grinder'],
   avoidMachines: ['Seed Plot'],
   steamSupply: 'existing',
+  coinsPerBuilding: 1000,
   // Player-reported: plants (Nurseries) stack 3 high per floor.
   stacks: { Nursery: 3 },
 });

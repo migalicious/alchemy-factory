@@ -29,6 +29,11 @@ export interface VeganOptions {
    */
   rates?: Record<string, number>;
   rateHint?: number;
+  /**
+   * Coins/min that count as much as one building (buildings goal). Bought raws cost
+   * rate x buyPrice; 0 or undefined ignores coins.
+   */
+  coinsPerBuilding?: number;
 }
 
 /** buildings: fewest machines incl. fertilizer upkeep; coins: cheapest by upstream cost model. */
@@ -137,41 +142,58 @@ export function veganPlan(db: GameData, opts: VeganOptions = {}): VeganPlan {
 
   /** One relaxation with a fixed estimate of what a fertilizer item costs. */
   const rateOf = (item: string) => opts.rates?.[item] ?? opts.rateHint ?? 1;
-  const relax = (fertEst: number) => {
+  const cpb = opts.coinsPerBuilding ?? settings.coinsPerBuilding;
+  const coinWeight = cpb && cpb > 0 ? 1 / cpb : 0;
+  const buyPrice = (item: string) => {
+    const it = db.items[item];
+    return (it?.category === 'Currency' ? it.sellPrice : it?.buyPrice) ?? 0;
+  };
+  const relax = (fertEst: number, fertCoins: number) => {
     // cost = machines per 1 item/min (buildings) or copper per item (coins);
-    // lines = production lines in the item's chain (buildings only).
+    // lines = production lines in the item's chain (buildings only);
+    // coins = portal coins spent per item (buildings only; one recipe unit = one purchase).
     const cost = new Map<string, number>();
     const lines = new Map<string, number>();
+    const coins = new Map<string, number>();
     for (const r of bought) {
       cost.set(r, goal === 'coins' ? base.get(r) ?? 0 : 0); // buying from a portal needs no production machines
       lines.set(r, 0);
+      coins.set(r, buyPrice(r));
     }
     const chosen = new Map<string, Recipe>();
     const score = new Map<string, number>();
-    const evaluate = (r: Recipe, item: string): { cost: number; lines: number } | null => {
+    const evaluate = (r: Recipe, item: string): { cost: number; lines: number; coins: number } | null => {
       let sum = 0;
       let steps = 1;
+      let spend = 0;
       for (const [i, q] of Object.entries(r.inputs)) {
         const c = cost.get(i);
         if (c === undefined) return null;
         sum += c * q;
         steps += lines.get(i) ?? 0;
+        spend += (coins.get(i) ?? 0) * q;
       }
       const mach = db.machines[r.machine];
       if (goal === 'coins') {
         if (mach?.heatCost) sum += ((mach.heatCost > 0 ? mach.heatCost : r.heatCost ?? 0) * (r.baseTime || 1)) / HEAT_PER_COPPER; // P/s x s
         if (r.nutrientCost) sum += r.nutrientCost / NUTR_PER_COPPER;
-        return { cost: sum / r.outputs[item], lines: 0 };
+        return { cost: sum / r.outputs[item], lines: 0, coins: 0 };
       }
       // Machines to run 1 batch/min, plus the heating pad/furnace share under heated ones.
       const perBatch = 1 / batchesPerMachine(db, r, settings, m);
       const heated = !!mach?.heatCost && (mach.heatCost > 0 || (r.heatCost ?? 0) > 0);
       sum += perBatch * (1 + (heated ? (mach!.slotsRequired ?? 1) / (db.machines[settings.heating]?.slots ?? 9) : 0));
-      // Fertilizer items per batch x machines per fertilizer item.
-      if (r.nutrientCost && fert?.nutrientValue) sum += (r.nutrientCost / (fert.nutrientValue * m.fert)) * fertEst;
-      return { cost: sum / (r.outputs[item] * yieldMult(r, m.alchemy)), lines: steps };
+      // Fertilizer items per batch x machines (and coins) per fertilizer item.
+      if (r.nutrientCost && fert?.nutrientValue) {
+        const fertItems = r.nutrientCost / (fert.nutrientValue * m.fert);
+        sum += fertItems * fertEst;
+        spend += fertItems * fertCoins;
+      }
+      const per = r.outputs[item] * yieldMult(r, m.alchemy);
+      return { cost: sum / per, lines: steps, coins: spend / per };
     };
-    const scoreOf = (item: string, e: { cost: number; lines: number }) => (goal === 'coins' ? e.cost : rateOf(item) * e.cost + e.lines);
+    const scoreOf = (item: string, e: { cost: number; lines: number; coins: number }) =>
+      goal === 'coins' ? e.cost : rateOf(item) * (e.cost + e.coins * coinWeight) + e.lines;
     for (let pass = 0; pass < 200; pass++) {
       let changed = false;
       for (const [item, list] of candidatesFor) {
@@ -184,6 +206,7 @@ export function veganPlan(db: GameData, opts: VeganOptions = {}): VeganPlan {
           if (cur === undefined || sc < cur * (1 - 1e-9)) {
             cost.set(item, e.cost);
             lines.set(item, e.lines);
+            coins.set(item, e.coins);
             score.set(item, sc);
             chosen.set(item, r);
             changed = true;
@@ -192,17 +215,22 @@ export function veganPlan(db: GameData, opts: VeganOptions = {}): VeganPlan {
       }
       if (!changed) break;
     }
-    return { cost, chosen };
+    return { cost, coins, chosen };
   };
   // Growers need fertilizer and fertilizer needs grown herbs, so iterate: score with a
   // fertilizer estimate, re-estimate from the result, until it settles.
   let fertEst = 0;
-  let { cost, chosen } = relax(fertEst);
+  let fertCoins = 0;
+  let { cost, coins, chosen } = relax(fertEst, fertCoins);
   for (let i = 0; i < 8 && goal === 'buildings'; i++) {
     const next = cost.get(settings.fertilizer);
-    if (next === undefined || Math.abs(next - fertEst) <= 1e-6 * Math.max(1, next)) break;
+    const nextCoins = coins.get(settings.fertilizer) ?? 0;
+    if (next === undefined) break;
+    const settled = Math.abs(next - fertEst) <= 1e-6 * Math.max(1, next) && Math.abs(nextCoins - fertCoins) <= 1e-6 * Math.max(1, nextCoins);
+    if (settled) break;
     fertEst = next;
-    ({ cost, chosen } = relax(fertEst));
+    fertCoins = nextCoins;
+    ({ cost, coins, chosen } = relax(fertEst, fertCoins));
   }
   breakCycles(chosen);
   const vegan = new Set<string>([...bought, ...chosen.keys()]);
