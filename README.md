@@ -4,11 +4,21 @@ A production planner for [Alchemy Factory](https://store.steampowered.com/app/36
 [alchemy-factory-codex.com's planner](https://alchemy-factory-codex.com/production-planner/) with the depth of
 [starfi5h's calculator](https://starfi5h.github.io/AlchemyFactoryCalculator/).
 
-- **Each item appears once.** Shared intermediates are merged instead of being redrawn for every consumer, so endgame charts stay readable. You get a table and a graph view.
-- **Swap any recipe in one click.** That includes cauldron combos (any 3 ingredients in a Cauldron, or 2 in an Advanced Cauldron) and "treat as raw input" to cut off a subtree.
-- **Steam Heating Pads.** Heated machines can sit on pads. Every steam line rolls up into one **boiler bank** that shows boilers, the furnaces under them, and fuel. You can switch any line back to a furnace with item fuel.
-- **🌿 Vegan mode.** Recipes are auto-picked so everything comes from plants (seeds and herbs, optionally logs). It uses normal recipes plus herb-pool cauldron chains, like starfi5h's 🌿 cauldron preset. Non-plant raw inputs are flagged.
+- **Each item appears once.** Shared intermediates are merged instead of being redrawn for every consumer. You get three views:
+  - **Table:** every production line.
+  - **Build:** one area per machine type, plus a "starter build" showing the rate with one machine per line.
+  - **Graph:** zones or items, left→right or top↓down.
+- **Swap any recipe in one click.** That includes cauldron combos (any 3 ingredients in a Cauldron, or 2 in an Advanced Cauldron), Paradox Crucible any-item recipes, and "treat as raw input" to cut off a subtree.
+- **Steam Heating Pads.**
+  - By default, steam comes from your existing supply and the planner just reports total demand.
+  - Switch to "Plan boilers" to get a boiler bank with its furnaces and fuel.
+  - Any line can go back to a furnace with item fuel.
+- **🌿 Vegan mode.** Recipes are auto-picked from the sources you allow.
+  - Sources are grown herbs plus the cheap raws you tick to buy. Their products up to 2 processing steps away can go into cauldrons.
+  - Picks aim for the fewest buildings at your target rate.
 - **Share links.** The whole plan lives in the URL.
+
+Contributor and agent notes are in [CLAUDE.md](CLAUDE.md); the current state and open questions are in [docs/HANDOFF.md](docs/HANDOFF.md).
 
 ## Development
 
