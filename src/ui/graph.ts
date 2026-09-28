@@ -86,9 +86,9 @@ function zoneGraph(app: App): { nodes: GNode[]; edges: GEdge[] } {
     nodes.push({
       id: 'raw',
       kind: 'raw',
-      lines: ['🛒 Purchasing Portal', listClip(raws), `${raws.length} item${raws.length === 1 ? '' : 's'} · ${fmtCoins(coins.total)} 🪙/min`],
+      lines: ['🛒 Purchasing Portal', listClip(raws), `${raws.length} item${raws.length === 1 ? '' : 's'} · ${fmtCoins(coins.total)}/min`],
       tip: Object.entries(result.raw)
-        .map(([i, r]) => `${fmt(r)} ${i}/min${coins.perItem[i] !== null ? ` · ${fmtCoins(coins.perItem[i]!)} coins/min` : ''}`)
+        .map(([i, r]) => `${fmt(r)} ${i}/min${coins.perItem[i] !== null ? ` · ${fmtCoins(coins.perItem[i]!)}/min` : ''}`)
         .join('\n'),
     });
   const targets = plan.targets.filter(t => t.rate > 0);
@@ -133,7 +133,7 @@ function itemGraph(app: App): { nodes: GNode[]; edges: GEdge[] } {
   const coins = rawCoinCost(app.db, result.raw);
   for (const [item, rate] of Object.entries(result.raw)) {
     const c = coins.perItem[item];
-    nodes.push({ id: `raw:${item}`, kind: 'raw', lines: [`🛒 ${item}`, `${fmt(rate)}/min${c !== null ? ` · ${fmtCoins(c)} 🪙/min` : ''}`], tip: item, onClick: () => app.openPicker(item) });
+    nodes.push({ id: `raw:${item}`, kind: 'raw', lines: [`🛒 ${item}`, `${fmt(rate)}/min${c !== null ? ` · ${fmtCoins(c)}/min` : ''}`], tip: item, onClick: () => app.openPicker(item) });
   }
   for (const t of plan.targets) if (t.rate > 0) nodes.push({ id: `target:${t.item}`, kind: 'target', lines: [`🎯 ${t.item}`, `${fmt(t.rate)}/min`], tip: t.item });
   for (const [item, rate] of Object.entries(result.surplus)) nodes.push({ id: `surplus:${item}`, kind: 'surplus', lines: [`↗ ${item}`, `surplus ${fmt(rate)}/min`], tip: item });

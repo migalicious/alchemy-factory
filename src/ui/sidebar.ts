@@ -168,7 +168,7 @@ function renderSummary(app: App): HTMLElement {
         h('button', { class: 'link', onclick: () => app.openPicker(item), title: 'Choose a recipe for this item' }, item),
         badge,
         h('span', { class: 'num' }, `${fmt(rate)}/min`),
-        h('span', { class: 'num coins', title: c === null ? "Can't be bought: make it or supply it yourself" : `${fmt(rate)} × ${fmtCoins(c / rate)} coins` }, c === null ? '—' : `${fmtCoins(c)} 🪙`),
+        h('span', { class: 'num coins', title: c === null ? "Can't be bought: make it or supply it yourself" : `${fmt(rate)} × ${fmtCoins(c / rate)} each` }, c === null ? '—' : `${fmtCoins(c)}/min`),
       );
     });
 
@@ -181,7 +181,18 @@ function renderSummary(app: App): HTMLElement {
       'dl',
       {},
       h('dt', {}, 'Coins'),
-      h('dd', { title: 'Buying raw inputs from Purchasing Portals (rate × buy price)' }, `${fmtCoins(coins.total)} 🪙/min`),
+      h(
+        'dd',
+        { title: 'Buying raw inputs from Purchasing Portals (rate × buy price)' },
+        `${fmtCoins(coins.total)}/min`,
+        app.coinCompare && app.coinCompare.coinsSaved > 1
+          ? h(
+              'div',
+              { class: 'muted small', title: 'Compared with the same plan when coins are ignored (1 building ≈ 0)' },
+              `Coin weight saves ${fmtCoins(app.coinCompare.coinsSaved)}/min for ${app.coinCompare.extraMachines > 0 ? `+${app.coinCompare.extraMachines}` : app.coinCompare.extraMachines} building${Math.abs(app.coinCompare.extraMachines) === 1 ? '' : 's'}`,
+            )
+          : null,
+      ),
       h('dt', {}, 'Fuel'),
       h('dd', {}, `${fmt(heat.totalFuelPerMin)} ${fuel}/min`),
       heat.steamPerMin > 0 ? h('dt', {}, 'Steam') : null,

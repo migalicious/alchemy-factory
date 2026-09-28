@@ -69,6 +69,7 @@ haven't been tested in-game yet.
   - World Tree Leaf/Core, Pyrite, Quartz and Meteorite are off by default.
   - Bought raws never go straight into cauldrons or the Paradox Crucible; only broken-down items (ingot, sand, plank…) do.
   - Automatic picks aim for **fewest buildings**, scored as rate × (machines + coins/min ÷ `coinsPerBuilding`) + lines, so at low rates fewer steps win.
+- **Currency:** DB prices are copper. 1,000 copper = 1 silver, 100 silver = 1 gold. The UI shows the largest unit (`fmtCoins`). The owners make >100 gold/day on good days, but money is still a constraint: they want to see (and take) "halve the coins for a few more machines" trade-offs.
 - **Coin weight:** `settings.coinsPerBuilding` (default 1000) also goes into the LP objective, so the solver won't burn pricey raws. Example: Salt_Rock (Rock Salt at 9k) used just for its Sand byproduct.
 - **The recipe picker must keep listing many cauldron options.** Searching (e.g. Lavender for Oblivion Essence) is enough; don't force automatic picks to match their in-game habits.
 

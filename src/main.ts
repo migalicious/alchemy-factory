@@ -11,6 +11,7 @@ import { renderBuild } from './ui/build';
 import { renderResearch } from './ui/research';
 import { openPicker } from './ui/picker';
 import { toast } from './ui/dom';
+import { rawCoinCost } from './solver/coins';
 
 const db = loadGameData();
 
@@ -48,10 +49,41 @@ const app = {
   },
 } as App;
 
+function solveFor(plan: PlanState) {
+  const eff = effectiveChoices(db, plan);
+  const result = solvePlan(db, { targets: plan.targets, choices: eff.choices, extraRecipes: eff.extraRecipes, settings: plan.settings });
+  return { eff, result };
+}
+
+const machinesOf = (r: App['result']) => r.lines.reduce((a, l) => a + l.machinesCeil, 0);
+
 function recompute() {
-  app.eff = effectiveChoices(db, app.plan);
-  app.result = solvePlan(db, { targets: app.plan.targets, choices: app.eff.choices, extraRecipes: app.eff.extraRecipes, settings: app.plan.settings });
+  ({ eff: app.eff, result: app.result } = solveFor(app.plan));
   app.heat = computeHeat(db, app.result.lines, app.plan.settings, app.plan.heating);
+  app.coinCompare = undefined;
+  scheduleCoinCompare();
+}
+
+/**
+ * "What does the coin weight buy?" needs a second solve with coins ignored. Run it after
+ * the page has updated (and only for the latest plan) so edits stay snappy.
+ */
+let compareTimer: number | undefined;
+function scheduleCoinCompare() {
+  clearTimeout(compareTimer);
+  if (!(app.plan.settings.coinsPerBuilding > 0) || app.result.status !== 'optimal') return;
+  const plan = app.plan;
+  const result = app.result;
+  compareTimer = window.setTimeout(() => {
+    if (app.plan !== plan || app.result !== result) return;
+    const alt = solveFor({ ...plan, settings: { ...plan.settings, coinsPerBuilding: 0 } }).result;
+    if (alt.status !== 'optimal') return;
+    app.coinCompare = {
+      coinsSaved: rawCoinCost(db, alt.raw).total - rawCoinCost(db, result.raw).total,
+      extraMachines: machinesOf(result) - machinesOf(alt),
+    };
+    renderSidebar(app, document.getElementById('sidebar')!);
+  }, 50);
 }
 
 function render() {

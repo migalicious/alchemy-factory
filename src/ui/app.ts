@@ -10,6 +10,8 @@ export interface App {
   result: SolveResult;
   heat: HeatResult;
   eff: ReturnType<typeof effectiveChoices>;
+  /** Same plan solved with coins ignored, to show what the coin weight buys. */
+  coinCompare?: { coinsSaved: number; extraMachines: number };
   /** Mutate the plan, re-solve and re-render everything. */
   update(mutate?: (p: PlanState) => void): void;
   openPicker(item: string): void;
